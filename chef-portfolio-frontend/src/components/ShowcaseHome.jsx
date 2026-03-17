@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
   const [meals, setMeals] = useState([]);
@@ -296,10 +297,10 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             <span></span>
           </button>
         ) : (
-          <a href="/login" className="showcase-mobile-login-btn">Log In</a>
+          <Link to="/login" className="showcase-mobile-login-btn">Log In</Link>
         )}
         <div className="showcase-header-actions">
-          {!isLoggedIn && <a href="/login" className="showcase-btn">Log In</a>}
+          {!isLoggedIn && <Link to="/login" className="showcase-btn">Log In</Link>}
           {isLoggedIn && (
             <div className="showcase-account-menu" ref={accountMenuRef}>
               <button
@@ -321,7 +322,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
                 <ul className="showcase-account-dropdown" role="menu" aria-label="Account options">
                   {isAdmin ? (
                     <li role="none">
-                      <a href="/admin" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Admin Panel</a>
+                      <Link to="/admin" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Admin Panel</Link>
                     </li>
                   ) : (
                     <li role="none">
@@ -345,7 +346,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
               )}
             </div>
           )}
-          {isLoggedIn && <a href="/booking" className="showcase-btn">Book Now</a>}
+          {isLoggedIn && <Link to="/booking" className="showcase-btn">Book Now</Link>}
         </div>
 
       </header>
@@ -362,32 +363,32 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
           </div>
           <a href="/#home" onClick={() => handleMobileNavLinkClick('home')}>Home</a>
-          <a href="/menu" onClick={() => handleMobileNavLinkClick('menus')}>Food</a>
-          <a href="/gallery" onClick={() => handleMobileNavLinkClick('gallery')}>Gallery</a>
+          <Link to="/menu" onClick={() => handleMobileNavLinkClick('menus')}>Food</Link>
+          <Link to="/gallery" onClick={() => handleMobileNavLinkClick('gallery')}>Gallery</Link>
           <a href="#services" onClick={() => handleMobileNavLinkClick('services')}>Services</a>
           <a href="#about" onClick={() => handleMobileNavLinkClick('about')}>About</a>
           <a href="#contact" onClick={() => handleMobileNavLinkClick('contact')}>Contact</a>
           <div className="showcase-mobile-actions">
             {!isLoggedIn && (
-              <a
-                href="/login"
+              <Link
+                to="/login"
                 className="showcase-mobile-login"
                 onClick={() => setMobileNavOpen(false)}
               >
                 Log In
-              </a>
+              </Link>
             )}
-            {isLoggedIn && <a href="/booking" onClick={() => setMobileNavOpen(false)}>Book Now</a>}
+            {isLoggedIn && <Link to="/booking" onClick={() => setMobileNavOpen(false)}>Book Now</Link>}
             {(isAdmin || isLoggedIn) && (
               <div className="showcase-mobile-actions-row">
                 {isAdmin && (
-                  <a
-                    href="/admin"
+                  <Link
+                    to="/admin"
                     className="showcase-mobile-admin"
                     onClick={() => setMobileNavOpen(false)}
                   >
                     Admin Panel
-                  </a>
+                  </Link>
                 )}
                 {isLoggedIn && (
                   <button
@@ -419,18 +420,18 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
               </span>
               <span className="showcase-hero-nav-label">Home</span>
             </a>
-            <a href="/menu" className={activeNavItem === 'menus' ? 'active' : ''} onClick={() => setActiveNavItem('menus')}>
+            <Link to="/menu" className={activeNavItem === 'menus' ? 'active' : ''} onClick={() => setActiveNavItem('menus')}>
               <span className="showcase-hero-nav-icon" aria-hidden="true">
                 <img src="/icons/menus.svg" alt="" className="showcase-hero-nav-icon-svg" />
               </span>
               <span className="showcase-hero-nav-label">Menus</span>
-            </a>
-            <a href="/gallery" className={activeNavItem === 'gallery' ? 'active' : ''} onClick={() => setActiveNavItem('gallery')}>
+            </Link>
+            <Link to="/gallery" className={activeNavItem === 'gallery' ? 'active' : ''} onClick={() => setActiveNavItem('gallery')}>
               <span className="showcase-hero-nav-icon" aria-hidden="true">
                 <img src="/icons/gallery.svg" alt="" className="showcase-hero-nav-icon-svg" />
               </span>
               <span className="showcase-hero-nav-label">Gallery</span>
-            </a>
+            </Link>
             <a href="#services" className={activeNavItem === 'services' ? 'active' : ''} onClick={() => setActiveNavItem('services')}>
               <span className="showcase-hero-nav-icon" aria-hidden="true">
                 <img src="/icons/services.svg" alt="" className="showcase-hero-nav-icon-svg" />
@@ -480,7 +481,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
                       </div>
                       <div className="showcase-top-recipe-meta">
                         <h3>{recipe.title}</h3>
-                        <a href="/menu" className="showcase-top-recipe-btn">View Recipe</a>
+                        <Link to="/menu" className="showcase-top-recipe-btn">View Recipe</Link>
                       </div>
                     </div>
                   </article>
@@ -509,7 +510,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
               <h3>{activeService.title}</h3>
               <p>{activeService.description}</p>
               <div className="showcase-service-link-wrap">
-                <a href="/booking" className="showcase-service-link">Book Service</a>
+                <Link to="/booking" className="showcase-service-link">Book Service</Link>
               </div>
             </div>
           </article>
@@ -531,15 +532,15 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             >
               <div className="showcase-service-card">
                 <div className="showcase-service-media">
-                  <a href="/booking" className="showcase-service-media-link" aria-label={`Book ${service.title}`}>
+                  <Link to="/booking" className="showcase-service-media-link" aria-label={`Book ${service.title}`}>
                     <img src={service.imageUrl} alt={service.title} loading="lazy" />
-                  </a>
+                  </Link>
                 </div>
                 <div className="showcase-service-meta">
                   <h3>{service.title}</h3>
                   <p className="showcase-service-desc">{service.description}</p>
                   <div className="showcase-service-cta">
-                    <a href="/booking" className="showcase-service-link">Book Service</a>
+                    <Link to="/booking" className="showcase-service-link">Book Service</Link>
                   </div>
                 </div>
               </div>
@@ -609,7 +610,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             );
           })}
         </div>
-          <a href="/bio" className="showcase-btn showcase-welcome-cta-btn">Learn More About Me</a>
+          <Link to="/bio" className="showcase-btn showcase-welcome-cta-btn">Learn More About Me</Link>
         </div>
 
         <section className="showcase-dishes" id="menus">
