@@ -507,6 +507,19 @@ function AdminDashboard({ onLogout }) {
       && booking.date.startsWith(`${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}-`))
     .sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
 
+  const openBooking = (bookingId) => {
+    const defaultSortedBookings = [...bookings].sort((a, b) => (
+      new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)
+    ));
+    const bookingIndex = defaultSortedBookings.findIndex((booking) => booking._id === bookingId);
+    setSearchTerm('');
+    setBookingStatusFilter('all');
+    setSortOption('newest');
+    setBookingPage(bookingIndex < 0 ? 0 : Math.floor(bookingIndex / BOOKINGS_PER_PAGE));
+    setExpandedBookingId(bookingId);
+    setActiveMainSection('bookings');
+  };
+
   const formatCalendarDate = (year, month, day) => (
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   );
@@ -603,6 +616,10 @@ function AdminDashboard({ onLogout }) {
       setMessageSearchTerm('');
       setMessagePage(0);
       setActiveMainSection('messages');
+      return;
+    }
+    if (section === 'bookings') {
+      openBooking(null);
       return;
     }
     setActiveMainSection(section);
@@ -1477,13 +1494,7 @@ function AdminDashboard({ onLogout }) {
                                     type="button"
                                     className="client-history-event"
                                     key={booking._id}
-                                    onClick={() => {
-                                      setSearchTerm('');
-                                      setBookingStatusFilter('all');
-                                      setBookingPage(0);
-                                      setActiveMainSection('bookings');
-                                      setExpandedBookingId(booking._id);
-                                    }}
+                                    onClick={() => openBooking(booking._id)}
                                   >
                                     <span>{booking.date || 'Date not set'} · {booking.time || 'Time not set'}</span>
                                     <span>{booking.occasion || 'Event'} · {booking.guests || '?'} guests</span>
@@ -1592,12 +1603,7 @@ function AdminDashboard({ onLogout }) {
                         type="button"
                         className="calendar-event"
                         key={booking._id}
-                        onClick={() => {
-                          setSearchTerm('');
-                          setBookingStatusFilter('all');
-                          setActiveMainSection('bookings');
-                          setExpandedBookingId(booking._id);
-                        }}
+                        onClick={() => openBooking(booking._id)}
                       >
                         <span className="calendar-event-time">{booking.time || 'Time not set'}</span>
                         <span className="calendar-event-name">{booking.name || 'Client'} · {booking.guests || '?'} guests</span>
@@ -1880,12 +1886,7 @@ function AdminDashboard({ onLogout }) {
                               <button
                                 type="button"
                                 className="btn-secondary"
-                                onClick={() => {
-                                  setSearchTerm('');
-                                  setBookingStatusFilter('all');
-                                  setActiveMainSection('bookings');
-                                  setExpandedBookingId(booking._id);
-                                }}
+                                onClick={() => openBooking(booking._id)}
                               >
                                 Open booking
                               </button>
