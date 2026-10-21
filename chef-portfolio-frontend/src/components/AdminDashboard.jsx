@@ -18,6 +18,11 @@ function AdminDashboard({ onLogout }) {
   const [showModal, setShowModal] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [meals, setMeals] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [reviewForm, setReviewForm] = useState({ author: '', role: '', text: '', rating: '5', published: true });
+  const [editingReviewId, setEditingReviewId] = useState(null);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState(null);
   const [mealForm, setMealForm] = useState({ title: '', category: '', description: '', imageUrl: '', socialUrl: '' });
   const [editingMealId, setEditingMealId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -144,6 +149,21 @@ function AdminDashboard({ onLogout }) {
       .catch(err => {
         console.error('Error fetching activity:', err);
         setActivities([]);
+      });
+
+    fetch(`${apiUrl}/api/admin/reviews`, { headers: authHeaders })
+      .then(async (res) => {
+        if (res.status === 401) {
+          handleAuthExpired();
+          throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error('Failed to fetch reviews');
+        return res.json();
+      })
+      .then((data) => setReviews(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error('Error fetching reviews:', err);
+        setReviews([]);
       });
 
     // Fetch Meals
@@ -646,6 +666,99 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
+  const resetReviewForm = () => {
+    setReviewForm({ author: '', role: '', text: '', rating: '5', published: true });
+    setEditingReviewId(null);
+  };
+
+  const handleReviewSave = async (event) => {
+    event.preventDefault();
+    if (!token) return;
+    setReviewSaving(true);
+    setReviewStatus(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/reviews${editingReviewId ? `/${editingReviewId}` : ''}`, {
+        method: editingReviewId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ ...reviewForm, rating: Number(reviewForm.rating) })
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const savedReview = await response.json().catch(() => null);
+      if (!response.ok || !savedReview) {
+        setReviewStatus({ type: 'error', message: savedReview?.error || 'Failed to save review.' });
+        return;
+      }
+      setReviews((current) => editingReviewId
+        ? current.map((review) => review._id === savedReview._id ? savedReview : review)
+        : [savedReview, ...current]);
+      resetReviewForm();
+      setReviewStatus({ type: 'success', message: 'Review saved.' });
+    } catch {
+      setReviewStatus({ type: 'error', message: 'Failed to save review.' });
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const handleReviewEdit = (review) => {
+    setEditingReviewId(review._id);
+    setReviewForm({
+      author: review.author || '',
+      role: review.role || '',
+      text: review.text || '',
+      rating: String(review.rating || 5),
+      published: review.published === true
+    });
+    setReviewStatus(null);
+  };
+
+  const handleReviewDelete = async (reviewId) => {
+    if (!token || !window.confirm('Delete this review?')) return;
+    try {
+      const response = await fetch(`${apiUrl}/api/reviews/${reviewId}`, { method: 'DELETE', headers: authHeaders });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      if (!response.ok) {
+        setReviewStatus({ type: 'error', message: 'Failed to delete review.' });
+        return;
+      }
+      setReviews((current) => current.filter((review) => review._id !== reviewId));
+      if (editingReviewId === reviewId) resetReviewForm();
+      setReviewStatus({ type: 'success', message: 'Review deleted.' });
+    } catch {
+      setReviewStatus({ type: 'error', message: 'Failed to delete review.' });
+    }
+  };
+
+  const handleReviewPublishToggle = async (review) => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${apiUrl}/api/reviews/${review._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ ...review, rating: Number(review.rating || 5), published: !review.published })
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const updated = await response.json().catch(() => null);
+      if (!response.ok || !updated) {
+        setReviewStatus({ type: 'error', message: updated?.error || 'Failed to update publish status.' });
+        return;
+      }
+      setReviews((current) => current.map((item) => item._id === updated._id ? updated : item));
+      setReviewStatus({ type: 'success', message: updated.published ? 'Review published.' : 'Review hidden from the website.' });
+    } catch {
+      setReviewStatus({ type: 'error', message: 'Failed to update publish status.' });
+    }
+  };
+
   const handleAuthCheck = async () => {
     if (!token) {
       setAuthStatus({ type: 'error', message: 'No token found. Please log in again.' });
@@ -756,7 +869,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">X</span>
               <span className="admin-nav-label">Messages</span>
             </a>
-            <a href="#overview" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#reviews" className="admin-nav-link" onClick={() => { setActiveMainSection('reviews'); setSidebarOpen(false); }}>
               <span className="admin-nav-icon">R</span>
               <span className="admin-nav-label">Reviews</span>
             </a>
@@ -849,6 +962,15 @@ function AdminDashboard({ onLogout }) {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={activeMainSection === 'reviews'}
+                  className={`admin-main-tab ${activeMainSection === 'reviews' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('reviews')}
+                >
+                  Reviews
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={activeMainSection === 'messages'}
                   className={`admin-main-tab ${activeMainSection === 'messages' ? 'active' : ''}`}
                   onClick={() => setActiveMainSection('messages')}
@@ -883,6 +1005,103 @@ function AdminDashboard({ onLogout }) {
                   Meals
                 </button>
               </div>
+
+              {activeMainSection === 'reviews' && (
+                <section className="review-manager panel" id="reviews">
+                  <div className="panel-head">
+                    <h5>Guest Reviews</h5>
+                    <span>{reviews.filter((review) => review.published).length} published · {reviews.length} total</span>
+                  </div>
+                  <form className="review-editor admin-form" onSubmit={handleReviewSave}>
+                    <label>
+                      Guest name
+                      <input
+                        value={reviewForm.author}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, author: event.target.value }))}
+                        maxLength="120"
+                        required
+                      />
+                    </label>
+                    <label>
+                      Role or attribution
+                      <input
+                        value={reviewForm.role}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, role: event.target.value }))}
+                        maxLength="120"
+                        placeholder="Optional"
+                      />
+                    </label>
+                    <label>
+                      Rating
+                      <select
+                        value={reviewForm.rating}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, rating: event.target.value }))}
+                      >
+                        {[5, 4, 3, 2, 1].map((rating) => <option value={rating} key={rating}>{rating} star{rating === 1 ? '' : 's'}</option>)}
+                      </select>
+                    </label>
+                    <label className="review-editor-text">
+                      Review
+                      <textarea
+                        value={reviewForm.text}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, text: event.target.value }))}
+                        maxLength="2000"
+                        rows="4"
+                        required
+                      />
+                    </label>
+                    <label className="review-publish-control">
+                      <input
+                        type="checkbox"
+                        checked={reviewForm.published}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, published: event.target.checked }))}
+                      />
+                      Published on website
+                    </label>
+                    <div className="review-editor-actions">
+                      <button className="btn-secondary" type="submit" disabled={reviewSaving}>
+                        {reviewSaving ? 'Saving...' : editingReviewId ? 'Save review' : 'Add review'}
+                      </button>
+                      {editingReviewId && (
+                        <button className="btn-secondary" type="button" onClick={resetReviewForm} disabled={reviewSaving}>
+                          Cancel edit
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                  {reviewStatus && <p className={`helper-text ${reviewStatus.type}`} role="status">{reviewStatus.message}</p>}
+                  {reviews.length === 0 ? (
+                    <p className="helper-text">No reviews have been added yet.</p>
+                  ) : (
+                    <div className="review-manager-list">
+                      {reviews.map((review) => (
+                        <article className="review-manager-item" key={review._id}>
+                          <div className="review-manager-copy">
+                            <div className="review-manager-heading">
+                              <strong>{review.author}</strong>
+                              <span className="review-rating" aria-label={`${review.rating} out of 5 stars`}>
+                                {'★'.repeat(Number(review.rating || 0))}{'☆'.repeat(5 - Number(review.rating || 0))}
+                              </span>
+                              <span className={`review-visibility ${review.published ? 'published' : 'hidden'}`}>
+                                {review.published ? 'Published' : 'Hidden'}
+                              </span>
+                            </div>
+                            {review.role && <span className="review-manager-role">{review.role}</span>}
+                            <p>{review.text}</p>
+                          </div>
+                          <div className="review-manager-actions">
+                            <button type="button" className="btn-secondary" onClick={() => handleReviewPublishToggle(review)}>
+                              {review.published ? 'Hide' : 'Publish'}
+                            </button>
+                            <button type="button" className="btn-secondary" onClick={() => handleReviewEdit(review)}>Edit</button>
+                            <button type="button" className="btn-danger" onClick={() => handleReviewDelete(review._id)}>Delete</button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
 
               {activeMainSection === 'clients' && (
                 <section className="client-directory panel" id="clients">

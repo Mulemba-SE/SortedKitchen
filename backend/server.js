@@ -157,6 +157,23 @@ mealSchema.pre('save', function updateTimestamp(next) {
 
 const Meal = mongoose.model('Meal', mealSchema);
 
+const reviewSchema = new mongoose.Schema({
+  author: { type: String, required: true, trim: true, maxlength: 120 },
+  role: { type: String, default: '', trim: true, maxlength: 120 },
+  text: { type: String, required: true, trim: true, maxlength: 2000 },
+  rating: { type: Number, min: 1, max: 5, default: 5 },
+  published: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+reviewSchema.pre('save', function updateReviewTimestamp(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const Review = mongoose.model('Review', reviewSchema);
+
 const buildSocialMealTitle = (socialUrl) => {
   const lower = String(socialUrl || '').toLowerCase();
   if (lower.includes('tiktok.com')) return 'TikTok Video';
@@ -749,6 +766,86 @@ app.get('/api/activity', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Fetch activity error:', err);
     res.status(500).json({ error: 'Failed to fetch activity' });
+  }
+});
+
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const reviews = await Review.find({ published: true }).sort({ createdAt: -1 });
+    res.json(reviews);
+  } catch (err) {
+    console.error('Fetch reviews error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.get('/api/admin/reviews', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const reviews = await Review.find().sort({ createdAt: -1 });
+    res.json(reviews);
+  } catch (err) {
+    console.error('Fetch admin reviews error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.post('/api/reviews', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const author = String(req.body?.author || '').trim();
+    const text = String(req.body?.text || '').trim();
+    const rating = Number(req.body?.rating ?? 5);
+    if (!author || !text || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Author, review text, and a 1-5 rating are required' });
+    }
+    const review = await Review.create({
+      author,
+      role: String(req.body?.role || '').trim(),
+      text,
+      rating,
+      published: req.body?.published !== false
+    });
+    await new Activity({ action: 'Review Created', details: `Review from ${author} was added` }).save();
+    res.status(201).json(review);
+  } catch (err) {
+    console.error('Create review error:', err);
+    res.status(400).json({ error: 'Failed to create review' });
+  }
+});
+
+app.put('/api/reviews/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const author = String(req.body?.author || '').trim();
+    const text = String(req.body?.text || '').trim();
+    const rating = Number(req.body?.rating);
+    if (!author || !text || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Author, review text, and a 1-5 rating are required' });
+    }
+    const review = await Review.findByIdAndUpdate(req.params.id, {
+      author,
+      role: String(req.body?.role || '').trim(),
+      text,
+      rating,
+      published: req.body?.published === true,
+      updatedAt: new Date()
+    }, { new: true, runValidators: true });
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    await new Activity({ action: 'Review Updated', details: `Review from ${author} was updated` }).save();
+    res.json(review);
+  } catch (err) {
+    console.error('Update review error:', err);
+    res.status(400).json({ error: 'Failed to update review' });
+  }
+});
+
+app.delete('/api/reviews/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const review = await Review.findByIdAndDelete(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    await new Activity({ action: 'Review Deleted', details: `Review from ${review.author} was deleted` }).save();
+    res.json({ message: 'Review deleted' });
+  } catch (err) {
+    console.error('Delete review error:', err);
+    res.status(400).json({ error: 'Failed to delete review' });
   }
 });
 
