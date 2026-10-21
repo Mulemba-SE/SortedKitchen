@@ -761,7 +761,9 @@ app.put('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
 
 app.get('/api/activity', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const activities = await Activity.find().sort({ timestamp: -1 }).limit(10);
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 10;
+    const activities = await Activity.find().sort({ timestamp: -1 }).limit(limit);
     res.json(activities);
   } catch (err) {
     console.error('Fetch activity error:', err);

@@ -7,6 +7,8 @@ function AdminDashboard({ onLogout }) {
   const MEALS_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [activitySearchTerm, setActivitySearchTerm] = useState('');
+  const [activityActionFilter, setActivityActionFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [expandedClientKey, setExpandedClientKey] = useState(null);
@@ -140,7 +142,7 @@ function AdminDashboard({ onLogout }) {
       });
 
     // Fetch Activity Log
-    fetch(`${apiUrl}/api/activity`, { headers: authHeaders })
+    fetch(`${apiUrl}/api/activity?limit=100`, { headers: authHeaders })
       .then(async res => {
         if (res.status === 401) {
           handleAuthExpired();
@@ -376,6 +378,14 @@ function AdminDashboard({ onLogout }) {
   });
 
   const totalBookings = bookings.length;
+  const activityActions = [...new Set(activities.map((item) => item.action || 'Other'))].sort();
+  const filteredActivities = activities.filter((item) => {
+    const query = activitySearchTerm.trim().toLowerCase();
+    const action = item.action || 'Other';
+    if (activityActionFilter !== 'all' && action !== activityActionFilter) return false;
+    return !query || [item.user, item.action, item.target, item.details]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
   const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
   const today = new Date();
@@ -857,7 +867,7 @@ function AdminDashboard({ onLogout }) {
     try {
       const endpoints = [
         `${apiUrl}/api/bookings`,
-        `${apiUrl}/api/activity`,
+        `${apiUrl}/api/activity?limit=100`,
         `${apiUrl}/api/admin/reviews`,
         `${apiUrl}/api/meals`
       ];
@@ -1617,13 +1627,32 @@ function AdminDashboard({ onLogout }) {
               <section className="activity-section panel">
                 <div className="panel-head">
                   <h5>Recent Activity</h5>
-                  <button type="button" className="panel-more" aria-label="More options">...</button>
+                  <span>{filteredActivities.length} of {activities.length} entries</span>
+                </div>
+                <div className="activity-filters">
+                  <input
+                    type="search"
+                    className="search-input"
+                    placeholder="Search actions or details..."
+                    aria-label="Search activity history"
+                    value={activitySearchTerm}
+                    onChange={(event) => setActivitySearchTerm(event.target.value)}
+                  />
+                  <select
+                    className="sort-select"
+                    aria-label="Filter activity by action"
+                    value={activityActionFilter}
+                    onChange={(event) => setActivityActionFilter(event.target.value)}
+                  >
+                    <option value="all">All actions</option>
+                    {activityActions.map((action) => <option key={action} value={action}>{action}</option>)}
+                  </select>
                 </div>
                 <div className="activity-list">
-                  {activities.length === 0 ? (
-                    <p className="helper-text">No recent activity.</p>
+                  {filteredActivities.length === 0 ? (
+                    <p className="helper-text">{activities.length ? 'No activity matches these filters.' : 'No recent activity.'}</p>
                   ) : (
-                    activities.slice(0, 6).map((item) => (
+                    filteredActivities.map((item) => (
                       <div key={item._id || `${item.action}-${item.timestamp}`} className="activity-item">
                         <span className="activity-action">{item.user || 'Chef Admin'} {item.action || 'updated dashboard'}</span>
                         <span className="activity-details">{item.target || item.details || 'System update'}</span>

@@ -6180,6 +6180,18 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   padding-right: 0.2rem;
 }
 
+:root body .admin-dashboard .activity-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+
+:root body .admin-dashboard .activity-filters .search-input,
+:root body .admin-dashboard .activity-filters .sort-select {
+  width: 100%;
+}
+
 :root body .admin-dashboard .activity-item {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.6rem 0.1rem;
@@ -9742,6 +9754,10 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   }
 
   :root body .admin-dashboard .review-editor {
+    grid-template-columns: 1fr;
+  }
+
+  :root body .admin-dashboard .activity-filters {
     grid-template-columns: 1fr;
   }
 
