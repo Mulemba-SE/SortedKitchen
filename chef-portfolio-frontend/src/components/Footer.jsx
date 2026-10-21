@@ -12,7 +12,7 @@ function Footer() {
       <div className="footer-content">
         <div className="footer-info">
           <h3 className="footer-brand">
-            <img className="footer-logo" src="/images/logo.png" alt="Sorted Kitchen logo" />
+            <img className="footer-logo" src="/images/logo-256.jpg" alt="Sorted Kitchen logo" loading="lazy" decoding="async" />
             Sorted Kitchen
           </h3>
           <p>123 Culinary Avenue, Food City, FC 90210</p>

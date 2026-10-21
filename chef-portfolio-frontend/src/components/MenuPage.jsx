@@ -9,6 +9,9 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [filtersDocked, setFiltersDocked] = useState(false);
   const [likedRecipes, setLikedRecipes] = useState(() => new Set());
+  const [foodTypeMenuOpen, setFoodTypeMenuOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [sortOption, setSortOption] = useState('newest');
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const location = useLocation();
   const navigate = useNavigate();
@@ -16,13 +19,44 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
   const filtersRef = useRef(null);
   const filtersSentinelRef = useRef(null);
   const selectedCategory = (new URLSearchParams(location.search).get('category') || '').toLowerCase();
-  const categoryOptions = ['main', 'breakfast', 'lunch', 'dinner', 'salad', 'snacks'];
 
   const normalizeCategory = (category) => {
-    const normalized = (category || '').toLowerCase();
-    if (normalized === 'lunch' || normalized === 'dinner') return 'main';
+    const normalized = (category || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    if (normalized === 'lunk') return 'lunch';
     return normalized === 'snacks' ? 'snack' : normalized;
   };
+
+  const categoryLabelMap = {
+    breakfast: 'Breakfast',
+    dinner: 'Dinner',
+    lunch: 'Lunch',
+    appetizer: 'Appetizer',
+    desserts: 'Desserts',
+    salad: 'Salad',
+    drinks: 'Drinks',
+    'side dishes': 'Side Dishes',
+    brunch: 'Brunch',
+    snack: 'Snacks',
+    snacks: 'Snacks',
+    main: 'Main'
+  };
+
+  const toTitleCase = (value = '') => (
+    value
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  );
+
+  const hasSocialUrl = (meal) => typeof meal?.socialUrl === 'string' && meal.socialUrl.trim().length > 0;
+
+  const sortOptions = [
+    { id: 'newest', label: 'Newest' },
+    { id: 'title-asc', label: 'A-Z' },
+    { id: 'category-asc', label: 'Category' },
+    { id: 'liked', label: 'Top Rated' }
+  ];
 
   useEffect(() => {
     fetch(`${apiUrl}/api/meals`)
@@ -73,6 +107,32 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
   }, [mobileNavOpen]);
 
   useEffect(() => {
+    if (!foodTypeMenuOpen && !sortMenuOpen) return undefined;
+
+    const handleDocPointerDown = (event) => {
+      if (!filtersRef.current) return;
+      if (!filtersRef.current.contains(event.target)) {
+        setFoodTypeMenuOpen(false);
+        setSortMenuOpen(false);
+      }
+    };
+
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setFoodTypeMenuOpen(false);
+        setSortMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocPointerDown);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleDocPointerDown);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [foodTypeMenuOpen, sortMenuOpen]);
+
+  useEffect(() => {
     let ticking = false;
 
     const updateDockState = () => {
@@ -120,7 +180,13 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
   };
 
   const getCategoryLabel = (item) => {
-    const rawCategory = (item?.category || '').toLowerCase();
+    const rawCategory = normalizeCategory(item?.category);
+    if (categoryLabelMap[rawCategory]) return categoryLabelMap[rawCategory];
+    if (rawCategory.includes('side')) return 'Side Dishes';
+    if (rawCategory.includes('dessert')) return 'Desserts';
+    if (rawCategory.includes('drink') || rawCategory.includes('beverage')) return 'Drinks';
+    if (rawCategory.includes('appetizer') || rawCategory.includes('starter')) return 'Appetizer';
+    if (rawCategory.includes('brunch')) return 'Brunch';
     if (rawCategory.includes('breakfast')) return 'Breakfast';
     if (rawCategory.includes('salad')) return 'Salad';
     if (rawCategory.includes('snack')) return 'Snacks';
@@ -131,8 +197,13 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
       if (/(steak|salmon|roast|grill|filet|mignon)/.test(mainText)) return 'Dinner';
       return 'Lunch';
     }
+    if (rawCategory) return toTitleCase(rawCategory);
 
     const text = `${item?.title || ''} ${item?.description || ''}`.toLowerCase();
+    if (/(appetizer|starter|finger food)/.test(text)) return 'Appetizer';
+    if (/(dessert|cake|ice cream|pastry|pudding|cookie|brownie)/.test(text)) return 'Desserts';
+    if (/(drink|juice|smoothie|coffee|tea|soda|mocktail)/.test(text)) return 'Drinks';
+    if (/(brunch)/.test(text)) return 'Brunch';
     if (/(breakfast|waffle|pancake|omelet|egg|toast)/.test(text)) return 'Breakfast';
     if (/(salad|greens|caesar|vinaigrette)/.test(text)) return 'Salad';
     if (/(snack|fries|chips|brownie|cookie|bites|wings)/.test(text)) return 'Snacks';
@@ -228,10 +299,15 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
     );
   };
 
-  const handleCategoryFilter = (category) => {
+  const handleCategoryFilter = (category = '') => {
     const params = new URLSearchParams(location.search);
-    params.set('category', category);
-    navigate({ pathname: '/menu', search: `?${params.toString()}` });
+    if (category) {
+      params.set('category', normalizeCategory(category));
+    } else {
+      params.delete('category');
+    }
+    navigate({ pathname: '/menu', search: params.toString() ? `?${params.toString()}` : '' });
+    setFoodTypeMenuOpen(false);
   };
 
   const toggleLikeRecipe = (title) => {
@@ -275,7 +351,7 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
 
   const relatedDishes = meals.length ? meals.slice(0, 4) : fallbackRelatedRecipes;
 
-  const highlightRecipes = [
+  const fallbackHighlightRecipes = [
     {
       title: 'Mulemba',
       tag: 'Chicken',
@@ -292,19 +368,60 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
       imageUrl: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=960&q=70&fm=webp',
     },
   ];
+  const menuMeals = meals.filter((meal) => !hasSocialUrl(meal));
+  const recipeSource = menuMeals.length ? menuMeals : fallbackHighlightRecipes;
+  const foodTypeOptions = [
+    { id: '', label: 'All food' },
+    ...Array.from(
+      new Map(
+        recipeSource
+          .map((meal) => {
+            const label = getCategoryLabel(meal);
+            return [normalizeCategory(label), { id: normalizeCategory(label), label }];
+          })
+          .filter(([id]) => id)
+      ).values()
+    ).sort((a, b) => a.label.localeCompare(b.label))
+  ];
+  const activeFoodTypeLabel = foodTypeOptions.find((option) => option.id === normalizeCategory(selectedCategory))?.label || 'Food type';
+  const activeSortLabel = sortOptions.find((option) => option.id === sortOption)?.label || 'Sort by';
+  const filteredRecipes = recipeSource.filter((meal) => {
+    if (!selectedCategory) return true;
+    return normalizeCategory(getCategoryLabel(meal)) === normalizeCategory(selectedCategory);
+  });
+  const sortedRecipes = [...filteredRecipes].sort((a, b) => {
+    if (sortOption === 'title-asc') {
+      return (a.title || '').localeCompare(b.title || '');
+    }
+    if (sortOption === 'category-asc') {
+      return getCategoryLabel(a).localeCompare(getCategoryLabel(b));
+    }
+    if (sortOption === 'liked') {
+      return Number(likedRecipes.has(b.title || '')) - Number(likedRecipes.has(a.title || ''));
+    }
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+  const highlightRecipes = sortedRecipes
+    .slice(0, 6)
+    .map((meal, index) => ({
+      id: meal._id || `fallback-highlight-${index}`,
+      title: meal.title || 'Chef Special',
+      tag: meal.tag || getCategoryLabel(meal),
+      imageUrl: meal.imageUrl ? transformCloudinary(meal.imageUrl) : '',
+    }));
   const menuCategoryChips = [
     { id: 'chicken', label: 'Chicken', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965296.png' },
     { id: 'halal', label: 'Halal', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965334.png' },
     { id: 'burgers', label: 'Burgers', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965377.png' },
-    { id: 'local', label: 'Local food', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965261.png' },
+    { id: 'local food', label: 'Local food', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965261.png' },
     { id: 'snacks', label: 'Snacks', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965318.png' },
     { id: 'desserts', label: 'Desserts', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965282.png' },
     { id: 'pizza', label: 'Pizza', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965340.png' },
     { id: 'grill', label: 'Grill', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965361.png' },
     { id: 'breakfast', label: 'Breakfast', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965310.png' },
-    { id: 'tea', label: 'Tea & coffee', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965237.png' },
+    { id: 'tea & coffee', label: 'Tea & coffee', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965237.png' },
     { id: 'traditional', label: 'Traditional', iconUrl: 'https://cdn-icons-png.flaticon.com/512/5965/5965256.png' },
-    { id: 'ice', label: 'Ice cream', iconUrl: 'https://cdn-icons-png.flaticon.com/512/6639/6639713.png' },
+    { id: 'ice cream', label: 'Ice cream', iconUrl: 'https://cdn-icons-png.flaticon.com/512/6639/6639713.png' },
   ];
 
   return (
@@ -313,7 +430,7 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
         <header className="showcase-header">
           <div className="showcase-brand">
             <span className="showcase-brand-logo-wrap">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
             </span>
             <p>Sorted Kitchen</p>
           </div>
@@ -386,7 +503,7 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
           <div className="showcase-mobile-panel" onClick={(event) => event.stopPropagation()}>
             <div className="showcase-mobile-brand">
               <span className="showcase-mobile-brand-logo">
-                <img src="/images/brand-logo.png" alt="Sorted Kitchen" />
+                <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" />
               </span>
               <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
             </div>
@@ -449,7 +566,12 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
             </button>
             <div className="menu-hero-track">
               {menuCategoryChips.map((chip) => (
-                <button key={chip.id} type="button" className="menu-hero-chip">
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={`menu-hero-chip${normalizeCategory(selectedCategory) === normalizeCategory(chip.id) ? ' active' : ''}`}
+                  onClick={() => handleCategoryFilter(chip.id)}
+                >
                   <span className="menu-hero-chip-icon" aria-hidden="true">
                     <img src={chip.iconUrl} alt="" className="menu-hero-chip-icon-img" />
                   </span>
@@ -463,15 +585,77 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
           </div>
           <div className="menu-hero-filters-sentinel" ref={filtersSentinelRef} aria-hidden="true"></div>
           <div className="menu-hero-filters" aria-label="Filters" ref={filtersRef}>
-            <button type="button" className="menu-hero-filter">
-              Food type
-              <span className="menu-hero-filter-caret" aria-hidden="true">{'\u25BE'}</span>
-            </button>
-            <button type="button" className="menu-hero-filter">
-              Sort by
-              <span className="menu-hero-filter-caret" aria-hidden="true">{'\u25BE'}</span>
-            </button>
-            <button type="button" className="menu-hero-filter menu-hero-filter-highlight">
+            <div className="menu-filter-control">
+              <button
+                type="button"
+                className={`menu-hero-filter${selectedCategory ? ' active' : ''}`}
+                aria-haspopup="menu"
+                aria-expanded={foodTypeMenuOpen}
+                onClick={() => {
+                  setFoodTypeMenuOpen((prev) => !prev);
+                  setSortMenuOpen(false);
+                }}
+              >
+                {activeFoodTypeLabel}
+                <span className="menu-hero-filter-caret" aria-hidden="true">{'\u25BE'}</span>
+              </button>
+              {foodTypeMenuOpen && (
+                <div className="menu-filter-popover" role="menu" aria-label="Food type">
+                  {foodTypeOptions.map((option) => (
+                    <button
+                      key={option.id || 'all-food'}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={normalizeCategory(selectedCategory) === option.id}
+                      className={`menu-filter-option${normalizeCategory(selectedCategory) === option.id ? ' active' : ''}`}
+                      onClick={() => handleCategoryFilter(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="menu-filter-control">
+              <button
+                type="button"
+                className={`menu-hero-filter${sortOption !== 'newest' ? ' active' : ''}`}
+                aria-haspopup="menu"
+                aria-expanded={sortMenuOpen}
+                onClick={() => {
+                  setSortMenuOpen((prev) => !prev);
+                  setFoodTypeMenuOpen(false);
+                }}
+              >
+                {activeSortLabel}
+                <span className="menu-hero-filter-caret" aria-hidden="true">{'\u25BE'}</span>
+              </button>
+              {sortMenuOpen && (
+                <div className="menu-filter-popover" role="menu" aria-label="Sort recipes">
+                  {sortOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortOption === option.id}
+                      className={`menu-filter-option${sortOption === option.id ? ' active' : ''}`}
+                      onClick={() => {
+                        setSortOption(option.id);
+                        setSortMenuOpen(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className={`menu-hero-filter menu-hero-filter-highlight${sortOption === 'liked' ? ' active' : ''}`}
+              aria-pressed={sortOption === 'liked'}
+              onClick={() => setSortOption((prev) => (prev === 'liked' ? 'newest' : 'liked'))}
+            >
               <span className="menu-hero-filter-icon" aria-hidden="true">
                 <img
                   src="https://cdn-icons-png.flaticon.com/128/91/91202.png"
@@ -489,10 +673,14 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
       <div className="full-menu-container">
         <p className="menu-grid-title">All Recipes</p>
         <section className="menu-highlight-grid" aria-label="Featured recipes">
-          {highlightRecipes.map((recipe, index) => (
-            <article key={`${recipe.title}-${index}`} className="menu-highlight-card">
+          {highlightRecipes.length > 0 ? highlightRecipes.map((recipe) => (
+            <article key={recipe.id} className="menu-highlight-card">
               <div className="menu-highlight-image">
-                <img src={recipe.imageUrl} alt={recipe.title} loading="lazy" decoding="async" />
+                {recipe.imageUrl ? (
+                  <img src={recipe.imageUrl} alt={recipe.title} loading="lazy" decoding="async" />
+                ) : (
+                  <div className="menu-item-image-fallback">No image</div>
+                )}
               </div>
               <div className="menu-highlight-info">
                 <div className="menu-highlight-title-row">
@@ -521,7 +709,9 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
                 <button type="button" className="menu-highlight-btn">View Recipe</button>
               </div>
             </article>
-          ))}
+          )) : (
+            <p className="menu-empty-state">No recipes match this filter.</p>
+          )}
         </section>
       </div>
 
@@ -577,11 +767,4 @@ function MenuPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) 
 }
 
 export default MenuPage;
-
-
-
-
-
-
-
 

@@ -74,7 +74,7 @@ function BookingPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
         <header className={`showcase-header ${isHeaderScrolled ? 'is-scrolled' : ''}`}>
           <div className="showcase-brand">
             <span className="showcase-brand-logo-wrap">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
             </span>
             <p>Sorted Kitchen</p>
           </div>
@@ -147,7 +147,7 @@ function BookingPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
           <div className="showcase-mobile-panel" onClick={(event) => event.stopPropagation()}>
             <div className="showcase-mobile-brand">
               <span className="showcase-mobile-brand-logo">
-                <img src="/images/brand-logo.png" alt="Sorted Kitchen" />
+                <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" />
               </span>
               <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
             </div>

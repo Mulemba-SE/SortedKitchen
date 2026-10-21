@@ -1,6 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+const transformCloudinary = (url, width = 640) => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  if (url.includes('/upload/')) {
+    return url.replace('/upload/', `/upload/f_auto,q_auto:eco,w_${width}/`);
+  }
+  return url;
+};
+
 function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
   const [meals, setMeals] = useState([]);
   const [activeNavItem, setActiveNavItem] = useState('home');
@@ -18,7 +26,10 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
         const nonSocialMeals = list.filter(
           (meal) => !(typeof meal?.socialUrl === 'string' && meal.socialUrl.trim().length > 0)
         );
-        setMeals(nonSocialMeals.slice(0, 4));
+        setMeals(nonSocialMeals.slice(0, 4).map((meal) => ({
+          ...meal,
+          imageUrl: transformCloudinary(meal.imageUrl)
+        })));
       })
       .catch(() => setMeals([]));
   }, [apiUrl]);
@@ -195,7 +206,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
       id: 'present',
       label: 'Presentation',
       alt: 'Presenting a plated dish',
-      src: '/images/Capture.PNG',
+      src: '/images/capture-900.jpg',
       description: 'Food presentation and final touches.',
     },
     {
@@ -280,7 +291,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
       <header className="showcase-header">
         <div className="showcase-brand">
           <span className="showcase-brand-logo-wrap">
-            <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+            <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
           </span>
           <p>Sorted Kitchen</p>
         </div>
@@ -358,7 +369,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
         <div className="showcase-mobile-panel" onClick={(event) => event.stopPropagation()}>
           <div className="showcase-mobile-brand">
             <span className="showcase-mobile-brand-logo">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" />
             </span>
             <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
           </div>
@@ -504,7 +515,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
           <h2>Gourmet Chef <em>Services</em></h2>
           <article className="showcase-service-expanded-mobile" aria-live="polite">
             <div className="showcase-service-expanded-mobile-media">
-              <img src={activeService.imageUrl} alt={activeService.title} loading="lazy" />
+              <img src={activeService.imageUrl} alt={activeService.title} loading="lazy" decoding="async" />
             </div>
             <div className="showcase-service-expanded-mobile-meta">
               <h3>{activeService.title}</h3>
@@ -533,7 +544,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
               <div className="showcase-service-card">
                 <div className="showcase-service-media">
                   <Link to="/booking" className="showcase-service-media-link" aria-label={`Book ${service.title}`}>
-                    <img src={service.imageUrl} alt={service.title} loading="lazy" />
+                    <img src={service.imageUrl} alt={service.title} loading="lazy" decoding="async" />
                   </Link>
                 </div>
                 <div className="showcase-service-meta">
@@ -562,7 +573,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
           <h2 className="showcase-welcome-title">Chef At Work</h2>
           <p className="showcase-welcome-intro">
             <span className="showcase-welcome-image-inline" aria-hidden="true">
-              <img src="/images/Capture.PNG" alt="" loading="lazy" />
+              <img src="/images/capture-900.jpg" alt="" loading="lazy" decoding="async" />
             </span>
             Welcome to Sorted Kitchen, where tradition meets creativity on every plate. We bring bold Kenyan influences together with refined culinary techniques to create unforgettable dining moments tailored just for you. From carefully selected fresh ingredients to beautifully crafted dishes, every meal is prepared with passion, precision, and attention to detail.
             Whether you are enjoying an intimate dinner, hosting friends, celebrating a special occasion, or simply looking to elevate your everyday dining experience, our goal is to deliver exceptional flavors and memorable moments. At Sorted Kitchen, we believe food is more than a meal - it is an experience that brings people together, tells a story, and leaves a lasting impression.
@@ -571,7 +582,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
           
         </div>
         <div className="showcase-welcome-figure" aria-hidden="true">
-          <img src="/images/Capture.PNG" alt="" loading="lazy" />
+          <img src="/images/capture-900.jpg" alt="" loading="lazy" decoding="async" />
         </div>
       </section>
 
@@ -592,7 +603,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             const meta = chefPhotoMeta[index];
             return (
               <figure key={shot.id} className="showcase-welcome-photo-card">
-                <img src={shot.src} alt={shot.alt} loading="lazy" />
+                <img src={shot.src} alt={shot.alt} loading="lazy" decoding="async" />
                 <figcaption className="showcase-welcome-photo-meta">
                   <span className="showcase-welcome-photo-tag">{tag}</span>
                   <span className="showcase-welcome-photo-rating" aria-label={`Rated ${meta.rating} stars`}>

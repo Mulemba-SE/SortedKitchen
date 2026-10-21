@@ -7,12 +7,13 @@ function AdminDashboard({ onLogout }) {
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [meals, setMeals] = useState([]);
-  const [mealForm, setMealForm] = useState({ title: '', description: '', imageUrl: '', socialUrl: '' });
+  const [mealForm, setMealForm] = useState({ title: '', category: '', description: '', imageUrl: '', socialUrl: '' });
   const [editingMealId, setEditingMealId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [bioContent, setBioContent] = useState('');
@@ -26,11 +27,33 @@ function AdminDashboard({ onLogout }) {
   const [expandedMealId, setExpandedMealId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeMainSection, setActiveMainSection] = useState('bookings');
+  const [approvingBookingId, setApprovingBookingId] = useState(null);
+  const [bookingActionStatus, setBookingActionStatus] = useState(null);
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const token = localStorage.getItem('adminToken');
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   const navigate = useNavigate();
   const authTimersRef = useRef({ redirect: null, hide: null });
+  const socialLaunchLockRef = useRef(0);
+
+  const formatCategoryLabel = (category = '') => (
+    String(category)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  );
+
+  const transformCloudinary = (url, width = 420) => {
+    if (!url || !url.includes('res.cloudinary.com')) return url;
+    if (url.includes('/upload/')) {
+      return url.replace('/upload/', `/upload/f_auto,q_auto:eco,w_${width}/`);
+    }
+    return url;
+  };
 
   const handleAuthExpired = () => {
     setAuthExpired(true);
@@ -158,8 +181,76 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
+  const handleApproveBooking = async (bookingId) => {
+    if (!token || approvingBookingId) return;
+    setApprovingBookingId(bookingId);
+    setBookingActionStatus(null);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/bookings/${bookingId}/approve`, {
+        method: 'POST',
+        headers: authHeaders
+      });
+
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setBookingActionStatus({ type: 'error', message: data.error || 'Failed to approve booking.' });
+        return;
+      }
+
+      if (data.booking) {
+        setBookings((currentBookings) => (
+          currentBookings.map((booking) => (booking._id === data.booking._id ? data.booking : booking))
+        ));
+      }
+      setBookingActionStatus({ type: 'success', message: data.message || 'Booking approved and client notified.' });
+    } catch {
+      setBookingActionStatus({ type: 'error', message: 'Failed to approve booking.' });
+    } finally {
+      setApprovingBookingId(null);
+    }
+  };
+
+  const handleExportBookings = () => {
+    const columns = [
+      ['Booking ID', (booking) => booking._id],
+      ['Name', (booking) => booking.name],
+      ['Email', (booking) => booking.email],
+      ['Occasion', (booking) => booking.occasion],
+      ['Date', (booking) => booking.date],
+      ['Time', (booking) => booking.time],
+      ['Guests', (booking) => booking.guests],
+      ['Status', (booking) => booking.status || 'pending'],
+      ['Created At', (booking) => booking.createdAt],
+      ['Approved At', (booking) => booking.approvedAt]
+    ];
+    const escapeCell = (value) => {
+      const text = String(value ?? '').replace(/[\r\n]+/g, ' ');
+      const safeText = /^[\s]*[=+@\-\t]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replace(/"/g, '""')}"`;
+    };
+    const csv = [
+      columns.map(([label]) => escapeCell(label)).join(','),
+      ...filteredBookings.map((booking) => columns.map(([, getValue]) => escapeCell(getValue(booking))).join(','))
+    ].join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bookings-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const filteredBookings = bookings.filter(booking => {
+    const status = booking.status || 'pending';
+    if (bookingStatusFilter !== 'all' && status !== bookingStatusFilter) return false;
     const query = searchTerm.trim().toLowerCase();
     if (!query) return true;
     return (
@@ -184,9 +275,8 @@ function AdminDashboard({ onLogout }) {
   });
 
   const totalBookings = bookings.length;
-  const totalGuests = bookings.reduce((sum, booking) => sum + (parseInt(booking.guests) || 0), 0);
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
-  const pendingInquiries = bookings.filter((booking) => !booking.occasion || !booking.date || !booking.time).length;
+  const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
   const upcomingEvents = filteredBookings.slice(0, 3);
   const totalMealPages = Math.max(1, Math.ceil(meals.length / MEALS_PER_PAGE));
   const pagedMeals = meals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
@@ -228,11 +318,80 @@ function AdminDashboard({ onLogout }) {
     setMealForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const launchSocialApp = (appUrl, webUrl) => {
+    const appWindow = window.open(appUrl, '_blank');
+    if (!appWindow) {
+      window.open(webUrl, '_blank');
+      return;
+    }
+
+    setTimeout(() => {
+      try {
+        if (!appWindow.closed) {
+          appWindow.location.replace(webUrl);
+        }
+      } catch {
+        // Ignore cross-origin access issues and keep best-effort app launch.
+      }
+    }, 650);
+  };
+
+  const handleOpenSocialApp = () => {
+    const now = Date.now();
+    if (now - socialLaunchLockRef.current < 900) return;
+    socialLaunchLockRef.current = now;
+
+    const normalizedUrl = mealForm.socialUrl.trim().toLowerCase();
+    if (normalizedUrl.includes('instagram.com')) {
+      launchSocialApp('instagram://app', 'https://www.instagram.com/');
+      return;
+    }
+
+    if (normalizedUrl.includes('tiktok.com')) {
+      launchSocialApp('tiktok://', 'https://www.tiktok.com/');
+      return;
+    }
+
+    launchSocialApp('tiktok://', 'https://www.tiktok.com/');
+  };
+
+  const handlePasteSocialUrl = async () => {
+    if (!navigator.clipboard?.readText) {
+      alert('Clipboard paste is not supported in this browser. Use Ctrl+V or Cmd+V.');
+      return;
+    }
+
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const pastedUrl = clipboardText.trim();
+      if (!pastedUrl) {
+        alert('Clipboard is empty.');
+        return;
+      }
+      setMealForm((prev) => ({ ...prev, socialUrl: pastedUrl }));
+    } catch (err) {
+      console.error('Clipboard read failed:', err);
+      alert('Could not read clipboard. Please paste manually with Ctrl+V or Cmd+V.');
+    }
+  };
+
   const handleMealSubmit = async (e) => {
     e.preventDefault();
     if (!token) return;
+    const normalizedMealForm = {
+      title: mealForm.title.trim(),
+      category: mealForm.category.trim(),
+      description: mealForm.description.trim(),
+      imageUrl: mealForm.imageUrl.trim(),
+      socialUrl: mealForm.socialUrl.trim()
+    };
+    const hasSocialUrl = normalizedMealForm.socialUrl.length > 0;
+    if (!hasSocialUrl && !normalizedMealForm.title) {
+      alert('Please add a title when no social URL is provided.');
+      return;
+    }
     const payload = {
-      ...mealForm,
+      ...normalizedMealForm,
       price: 0
     };
     try {
@@ -258,7 +417,7 @@ function AdminDashboard({ onLogout }) {
       } else {
         setMeals([saved, ...meals]);
       }
-      setMealForm({ title: '', description: '', imageUrl: '', socialUrl: '' });
+      setMealForm({ title: '', category: '', description: '', imageUrl: '', socialUrl: '' });
       setEditingMealId(null);
     } catch (err) {
       console.error('Error saving meal:', err);
@@ -269,6 +428,7 @@ function AdminDashboard({ onLogout }) {
     setEditingMealId(meal._id);
     setMealForm({
       title: meal.title || '',
+      category: meal.category || '',
       description: meal.description || '',
       imageUrl: meal.imageUrl || '',
       socialUrl: meal.socialUrl || ''
@@ -404,7 +564,7 @@ function AdminDashboard({ onLogout }) {
         <div className="admin-topbar-brand">
           <div className="showcase-brand">
             <span className="showcase-brand-logo-wrap">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
             </span>
             <h4>SORTED KITCHEN</h4>
           </div>
@@ -567,6 +727,9 @@ function AdminDashboard({ onLogout }) {
                   <h5>Booking Overview</h5>
                   <button type="button" className="panel-more" aria-label="More options">...</button>
                 </div>
+                {bookingActionStatus && (
+                  <p className={`helper-text ${bookingActionStatus.type}`}>{bookingActionStatus.message}</p>
+                )}
                 <div className="booking-filters">
                   <input
                     type="text"
@@ -575,6 +738,16 @@ function AdminDashboard({ onLogout }) {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="search-input"
                   />
+                  <select
+                    aria-label="Filter bookings by status"
+                    value={bookingStatusFilter}
+                    onChange={(e) => setBookingStatusFilter(e.target.value)}
+                    className="sort-select"
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                  </select>
                   <select
                     value={sortOption}
                     onChange={(e) => setSortOption(e.target.value)}
@@ -585,6 +758,14 @@ function AdminDashboard({ onLogout }) {
                     <option value="name-asc">Name (A-Z)</option>
                     <option value="name-desc">Name (Z-A)</option>
                   </select>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleExportBookings}
+                    disabled={filteredBookings.length === 0}
+                  >
+                    Export CSV ({filteredBookings.length})
+                  </button>
                 </div>
 
                 {isLoading ? (
@@ -608,6 +789,9 @@ function AdminDashboard({ onLogout }) {
                               {booking.date} - {booking.time} - {booking.guests} guests
                             </span>
                           </div>
+                          <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
+                            {booking.status === 'approved' ? 'Approved' : 'Pending'}
+                          </span>
                           <span className={`booking-chevron ${isOpen ? 'open' : ''}`} aria-hidden="true">
                             <span className="booking-chevron-icon"></span>
                           </span>
@@ -616,9 +800,24 @@ function AdminDashboard({ onLogout }) {
                           <div className="booking-details">
                             <div><strong>Email:</strong> {booking.email}</div>
                             <div><strong>Occasion:</strong> {booking.occasion || '--'}</div>
+                            <div><strong>Status:</strong> {booking.status === 'approved' ? 'Approved' : 'Pending approval'}</div>
+                            {booking.approvedAt && (
+                              <div><strong>Approved:</strong> {new Date(booking.approvedAt).toLocaleString()}</div>
+                            )}
                             <div><strong>Created:</strong> {booking.createdAt ? new Date(booking.createdAt).toLocaleString() : '--'}</div>
                             <div className="booking-actions">
+                              {(booking.status || 'pending') !== 'approved' && (
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => handleApproveBooking(booking._id)}
+                                  disabled={approvingBookingId === booking._id}
+                                >
+                                  {approvingBookingId === booking._id ? 'Approving...' : 'Approve'}
+                                </button>
+                              )}
                               <button
+                                type="button"
                                 className="btn-danger"
                                 onClick={() => handleDeleteClick(booking._id)}
                               >
@@ -697,9 +896,19 @@ function AdminDashboard({ onLogout }) {
               <form className="admin-form" onSubmit={handleMealSubmit}>
                 <div className="form-group">
                   <label>Title</label>
-                  <input type="text" name="title" value={mealForm.title} onChange={handleMealChange} required />
+                  <input type="text" name="title" value={mealForm.title} onChange={handleMealChange} />
                 </div>
-                <div className="form-group">
+                <div className="form-group meal-form-category">
+                  <label>Category</label>
+                  <input
+                    type="text"
+                    name="category"
+                    value={mealForm.category}
+                    onChange={handleMealChange}
+                    placeholder="e.g. Chicken, Lunch, Snacks"
+                  />
+                </div>
+                <div className="form-group meal-form-description">
                   <label>Description</label>
                   <textarea name="description" value={mealForm.description} onChange={handleMealChange} rows="3"></textarea>
                 </div>
@@ -707,17 +916,43 @@ function AdminDashboard({ onLogout }) {
                   <label>Image</label>
                   <input type="file" accept="image/*" onChange={handleUpload} />
                   {uploading && <p className="helper-text">Uploading...</p>}
-                  {mealForm.imageUrl && <img src={mealForm.imageUrl} alt="Meal preview" className="meal-preview" />}
+                  {mealForm.imageUrl && (
+                    <img
+                      src={transformCloudinary(mealForm.imageUrl, 420)}
+                      alt="Meal preview"
+                      className="meal-preview"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
                 </div>
-                <div className="form-group">
+                <div className="form-group meal-form-social-url">
                   <label>URL</label>
-                  <input
-                    type="url"
-                    name="socialUrl"
-                    value={mealForm.socialUrl}
-                    onChange={handleMealChange}
-                    placeholder="https://instagram.com/... or https://tiktok.com/..."
-                  />
+                  <div className="social-url-field-row">
+                    <input
+                      type="url"
+                      name="socialUrl"
+                      value={mealForm.socialUrl}
+                      onChange={handleMealChange}
+                      placeholder="https://instagram.com/... or https://tiktok.com/..."
+                    />
+                    <div className="social-url-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary social-url-action-btn"
+                        onClick={handlePasteSocialUrl}
+                      >
+                        Paste Link
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary social-url-action-btn"
+                        onClick={handleOpenSocialApp}
+                      >
+                        Open App
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="admin-actions-row">
                   <button type="submit" className="btn-primary">
@@ -729,7 +964,7 @@ function AdminDashboard({ onLogout }) {
                       className="btn-secondary"
                       onClick={() => {
                         setEditingMealId(null);
-                        setMealForm({ title: '', description: '', imageUrl: '', socialUrl: '' });
+                        setMealForm({ title: '', category: '', description: '', imageUrl: '', socialUrl: '' });
                       }}
                     >
                       Cancel
@@ -751,9 +986,20 @@ function AdminDashboard({ onLogout }) {
                       aria-expanded={expandedMealId === meal._id}
                     >
                       <div className="meal-tile-media">
-                        {meal.imageUrl && <img src={meal.imageUrl} alt={meal.title} className="meal-thumb" />}
+                        {meal.imageUrl && (
+                          <img
+                            src={transformCloudinary(meal.imageUrl, 360)}
+                            alt={meal.title}
+                            className="meal-thumb"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        )}
                       </div>
                       <span className="meal-tile-title">{meal.title}</span>
+                      {meal.category ? (
+                        <span className="meal-tile-category">{formatCategoryLabel(meal.category)}</span>
+                      ) : null}
                       {meal.description ? (
                         <p className="meal-tile-description">{meal.description}</p>
                       ) : null}
@@ -855,7 +1101,15 @@ function AdminDashboard({ onLogout }) {
               x
             </button>
             <div className="meal-media">
-              {expandedMeal.imageUrl && <img src={expandedMeal.imageUrl} alt={expandedMeal.title} className="meal-thumb" />}
+              {expandedMeal.imageUrl && (
+                <img
+                  src={transformCloudinary(expandedMeal.imageUrl, 720)}
+                  alt={expandedMeal.title}
+                  className="meal-thumb"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
             </div>
             <div className="meal-card-body">
               <div className="meal-title-row">

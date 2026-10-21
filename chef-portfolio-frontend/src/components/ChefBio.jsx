@@ -84,7 +84,7 @@ function ChefBio({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
         <header className="showcase-header">
           <div className="showcase-brand">
             <span className="showcase-brand-logo-wrap">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
             </span>
             <p>Sorted Kitchen</p>
           </div>
@@ -192,7 +192,7 @@ function ChefBio({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
           <div className="showcase-mobile-panel" onClick={(event) => event.stopPropagation()}>
             <div className="showcase-mobile-brand">
               <span className="showcase-mobile-brand-logo">
-                <img src="/images/brand-logo.png" alt="Sorted Kitchen" />
+                <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" />
               </span>
               <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
             </div>
@@ -253,7 +253,7 @@ function ChefBio({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
       <section className="bio-content-shell">
         <div className="bio-intro-grid">
           <div className="bio-intro-media">
-            <img src="/images/Capture.PNG" alt="Chef portrait" />
+            <img src="/images/capture-900.jpg" alt="Chef portrait" loading="lazy" decoding="async" />
           </div>
           <div className="bio-intro-copy">
             <h2>Craft, Hospitality, and Flavor</h2>

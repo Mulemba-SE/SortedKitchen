@@ -100,6 +100,9 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
     description: meal.description,
     imageUrl: transformCloudinary(meal.imageUrl),
   }));
+  const isGalleryEmpty = !isLoadingMeals && !mealsError && dishes.length === 0;
+  const showAdminEmptyMessage = isGalleryEmpty && isAdmin;
+  const showGuestPlaceholders = isGalleryEmpty && !isAdmin;
 
   const getExcerpt = (text) => {
     if (!text) return 'No description is available for this dish yet.';
@@ -134,6 +137,9 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
       thumbnail: transformCloudinary(meal.imageUrl),
       platform: getSocialPlatform(meal.socialUrl),
     }));
+  const isSocialVideosEmpty = !isLoadingMeals && !mealsError && socialVideos.length === 0;
+  const showAdminSocialEmptyMessage = isSocialVideosEmpty && isAdmin;
+  const showGuestSocialPlaceholders = isSocialVideosEmpty && !isAdmin;
 
   useEffect(() => {
     if (socialVideos.length === 0) return;
@@ -179,7 +185,7 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
         <header className={`showcase-header ${isHeaderScrolled ? 'is-scrolled' : ''}`}>
           <div className="showcase-brand">
             <span className="showcase-brand-logo-wrap">
-              <img src="/images/brand-logo.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
+              <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" className="showcase-brand-logo" />
             </span>
             <p>Sorted Kitchen</p>
           </div>
@@ -252,7 +258,7 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
           <div className="showcase-mobile-panel" onClick={(event) => event.stopPropagation()}>
             <div className="showcase-mobile-brand">
               <span className="showcase-mobile-brand-logo">
-                <img src="/images/brand-logo.png" alt="Sorted Kitchen" />
+                <img src="/images/brand-logo-256.png" alt="Sorted Kitchen" />
               </span>
               <span className="showcase-mobile-brand-text">Sorted Kitchen</span>
             </div>
@@ -345,7 +351,7 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
                 <h1>Culinary Gallery</h1>
                 <div className="gallery-hero-copy-image">
                   <img
-                    src="/images/image2.png"
+                    src="/images/image2-900.jpg"
                     alt="Chef-crafted dishes"
                     loading="lazy"
                     decoding="async"
@@ -361,7 +367,7 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
                 <div className="gallery-hero-visual">
                   <div className="gallery-hero-visual-tilt">
                     <img
-                      src="/images/image2.png"
+                      src="/images/image2-900.jpg"
                       alt="Chef-crafted dishes"
                       loading="lazy"
                       decoding="async"
@@ -374,10 +380,9 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
         </div>
       </div>
 
-      {isLoadingMeals && <p className="helper-text">Loading meals...</p>}
       {mealsError && <p className="helper-text error">{mealsError}</p>}
-      {!isLoadingMeals && !mealsError && dishes.length === 0 && (
-        <p className="helper-text">
+      {showAdminEmptyMessage && (
+        <p className="helper-text gallery-empty-state">
           No gallery dishes yet. Add a dish without a social URL to show it here.
         </p>
       )}
@@ -402,12 +407,27 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
               </div>
             </article>
           ))}
+          {showGuestPlaceholders &&
+            Array.from({ length: 6 }).map((_, index) => (
+              <article
+                key={`gallery-empty-template-${index}`}
+                className="gallery-page-card gallery-page-card-faded"
+                aria-hidden="true"
+              >
+                <div className="gallery-page-placeholder"></div>
+                <div className="gallery-page-caption">
+                  <div className="gallery-page-skeleton-title"></div>
+                  <div className="gallery-page-skeleton-line"></div>
+                  <div className="gallery-page-skeleton-line gallery-page-skeleton-line-short"></div>
+                </div>
+              </article>
+            ))}
         </div>
       </section>
 
       <div className="gallery-wave-stack" aria-hidden="true">
         <div className="gallery-wave-icon" aria-hidden="true">
-          <img src="/images/brand-logo.png" alt="" className="gallery-wave-icon-img" />
+          <img src="/images/brand-logo-256.png" alt="" className="gallery-wave-icon-img" loading="lazy" decoding="async" />
         </div>
         <div className="gallery-wave-divider">
           <svg viewBox="0 0 1440 120" preserveAspectRatio="none">
@@ -425,7 +445,6 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
         <div className="gallery-tiktok-grid">
           {socialVideos.map((video) => {
             const preview = socialPreviews[video.url];
-            const title = preview?.title || video.title;
             const thumbnail = preview?.thumbnail_url || video.thumbnail;
             return (
               <a
@@ -434,13 +453,13 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
                 href={video.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`Open ${video.platform} video: ${title}`}
+                aria-label={`Open ${video.platform} video`}
               >
                 <div className="gallery-tiktok-thumb">
                   {thumbnail ? (
-                    <img src={thumbnail} alt={title} loading="lazy" decoding="async" />
+                    <img src={thumbnail} alt="" loading="lazy" decoding="async" />
                   ) : (
-                    <div className="gallery-tiktok-placeholder" role="img" aria-label={title}></div>
+                    <div className="gallery-tiktok-placeholder" role="img" aria-label={`${video.platform} video`}></div>
                   )}
                   <span className="gallery-tiktok-play" aria-hidden="true">
                     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -448,12 +467,27 @@ function GalleryPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
                     </svg>
                   </span>
                 </div>
-                <span className="gallery-tiktok-label">{title}</span>
               </a>
             );
           })}
-          {socialVideos.length === 0 && (
-            <p className="helper-text">Add a TikTok, Instagram, or YouTube URL in the admin dashboard to show videos here.</p>
+          {showGuestSocialPlaceholders &&
+            Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={`gallery-social-template-${index}`}
+                className="gallery-tiktok-card gallery-tiktok-card-faded"
+                aria-hidden="true"
+              >
+                <div className="gallery-tiktok-thumb">
+                  <div className="gallery-tiktok-placeholder"></div>
+                </div>
+                <div className="gallery-tiktok-skeleton-lines">
+                  <div className="gallery-tiktok-skeleton-line"></div>
+                  <div className="gallery-tiktok-skeleton-line gallery-tiktok-skeleton-line-short"></div>
+                </div>
+              </div>
+            ))}
+          {showAdminSocialEmptyMessage && (
+            <p className="helper-text gallery-social-empty-state">Add a TikTok, Instagram, or YouTube URL in the admin dashboard to show videos here.</p>
           )}
         </div>
       </section>

@@ -27,7 +27,7 @@ function About({ isLoggedIn = false }) {
       <div className="about-media">
         <div className="about-image">
           <img
-            src="/images/Capture.PNG"
+            src="/images/capture-900.jpg"
             alt="Private dining setup"
             loading="lazy"
             decoding="async"

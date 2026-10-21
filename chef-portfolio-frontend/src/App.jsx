@@ -6,6 +6,7 @@ import BookingPage from './components/BookingPage';
 import AdminDashboard from './components/AdminDashboard';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import GoogleAuthCallback from './components/GoogleAuthCallback';
 import MenuPage from './components/MenuPage';
 import Blog from './components/Blog';
 import ChefBio from './components/ChefBio';
@@ -14,7 +15,6 @@ import FAQ from './components/FAQ';
 import NotFound from './components/NotFound';
 import CookieConsent from './components/CookieConsent';
 import FavoritesPage from './components/FavoritesPage';
-import NewsletterPopup from './components/NewsletterPopup';
 import LoyaltyProgram from './components/LoyaltyProgram';
 import Careers from './components/Careers';
 import TermsOfService from './components/TermsOfService';
@@ -53,7 +53,6 @@ function App() {
   return (
     <Router>
       <CookieConsent />
-      <NewsletterPopup />
       <Routes>
         <Route path="/" element={
           <div>
@@ -74,6 +73,7 @@ function App() {
         <Route path="/booking" element={isLoggedIn ? <BookingPage isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
         <Route path="/login" element={isLoggedIn ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup onLogin={handleLogin} />} />
+        <Route path="/auth/google/callback" element={<GoogleAuthCallback onLogin={handleLogin} />} />
         <Route path="/admin" element={
           isAdmin ? <AdminDashboard onLogout={handleLogout} /> : <Navigate to="/login" />
         } />

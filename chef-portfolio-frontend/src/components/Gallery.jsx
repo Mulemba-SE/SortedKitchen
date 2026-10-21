@@ -124,7 +124,7 @@ function Gallery() {
             <div className="chef-about-media" aria-label="Professional chef photo">
               <div className="chef-about-image chef-about-image-main">
                 <img
-                  src="/images/Capture.PNG"
+                  src="/images/capture-900.jpg"
                   alt="Professional portrait of the chef in a kitchen setting."
                   loading="lazy"
                   decoding="async"

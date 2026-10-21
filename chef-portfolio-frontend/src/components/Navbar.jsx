@@ -93,7 +93,7 @@ function Navbar() {
   return (
     <nav className="navbar" onKeyDown={handleKeyDown}>
       <div className="logo">
-        <img className="logo-image" src="/images/logo.png" alt="Sorted Kitchen logo" />
+        <img className="logo-image" src="/images/logo-256.jpg" alt="Sorted Kitchen logo" />
         Sorted Kitchen
       </div>
       <button
