@@ -295,6 +295,15 @@ function AdminDashboard({ onLogout }) {
     setBookingForm((current) => ({ ...current, [name]: value }));
   };
 
+  const clearBookingFilters = () => {
+    setSearchTerm('');
+    setBookingDateFrom('');
+    setBookingDateTo('');
+    setBookingStatusFilter('all');
+    setSortOption('newest');
+    setBookingPage(0);
+  };
+
   const handleBookingSave = async (event, bookingId) => {
     event.preventDefault();
     if (!token || !bookingForm) return;
@@ -367,7 +376,8 @@ function AdminDashboard({ onLogout }) {
     URL.revokeObjectURL(url);
   };
 
-  const filteredBookings = bookings.filter(booking => {
+  const bookingDateRangeInvalid = Boolean(bookingDateFrom && bookingDateTo && bookingDateFrom > bookingDateTo);
+  const filteredBookings = (bookingDateRangeInvalid ? [] : bookings).filter(booking => {
     const status = booking.status || 'pending';
     if (bookingStatusFilter !== 'all' && status !== bookingStatusFilter) return false;
     if (bookingDateFrom && (!/^\d{4}-\d{2}-\d{2}$/.test(booking.date || '') || booking.date < bookingDateFrom)) return false;
@@ -1645,6 +1655,7 @@ function AdminDashboard({ onLogout }) {
                     className="sort-select"
                     aria-label="Bookings from date (inclusive)"
                     value={bookingDateFrom}
+                    max={bookingDateTo || undefined}
                     onChange={(event) => { setBookingDateFrom(event.target.value); setBookingPage(0); }}
                   />
                   <input
@@ -1652,6 +1663,7 @@ function AdminDashboard({ onLogout }) {
                     className="sort-select"
                     aria-label="Bookings through date (inclusive)"
                     value={bookingDateTo}
+                    min={bookingDateFrom || undefined}
                     onChange={(event) => { setBookingDateTo(event.target.value); setBookingPage(0); }}
                   />
                   <select
@@ -1682,7 +1694,14 @@ function AdminDashboard({ onLogout }) {
                   >
                     Export CSV ({filteredBookings.length})
                   </button>
+                  <button type="button" className="btn-secondary" onClick={clearBookingFilters}>
+                    Clear filters
+                  </button>
                 </div>
+
+                {bookingDateRangeInvalid && (
+                  <p className="helper-text error" role="alert">The end date must be on or after the start date.</p>
+                )}
 
                 {isLoading ? (
                   <LoadingSpinner />
