@@ -13,7 +13,6 @@ import ChefBio from './components/ChefBio';
 import GiftCards from './components/GiftCards';
 import FAQ from './components/FAQ';
 import NotFound from './components/NotFound';
-import CookieConsent from './components/CookieConsent';
 import FavoritesPage from './components/FavoritesPage';
 import LoyaltyProgram from './components/LoyaltyProgram';
 import Careers from './components/Careers';
@@ -52,7 +51,6 @@ function App() {
 
   return (
     <Router>
-      <CookieConsent />
       <Routes>
         <Route path="/" element={
           <div>
