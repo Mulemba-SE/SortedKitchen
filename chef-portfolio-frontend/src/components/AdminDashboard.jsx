@@ -6,12 +6,14 @@ import LoadingSpinner from './LoadingSpinner';
 function AdminDashboard({ onLogout }) {
   const MEALS_PER_PAGE = 10;
   const BOOKINGS_PER_PAGE = 10;
+  const CLIENTS_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
   const [activityActionFilter, setActivityActionFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [clientPage, setClientPage] = useState(0);
   const [expandedClientKey, setExpandedClientKey] = useState(null);
   const [messageSearchTerm, setMessageSearchTerm] = useState('');
   const [messageStatusFilter, setMessageStatusFilter] = useState('all');
@@ -430,6 +432,8 @@ function AdminDashboard({ onLogout }) {
         .some((value) => String(value || '').toLowerCase().includes(query));
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+  const totalClientPages = Math.max(1, Math.ceil(clients.length / CLIENTS_PER_PAGE));
+  const pagedClients = clients.slice(clientPage * CLIENTS_PER_PAGE, (clientPage + 1) * CLIENTS_PER_PAGE);
   const totalMealPages = Math.max(1, Math.ceil(meals.length / MEALS_PER_PAGE));
   const pagedMeals = meals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
   const expandedMeal = pagedMeals.find((meal) => meal._id === expandedMealId) || null;
@@ -488,6 +492,7 @@ function AdminDashboard({ onLogout }) {
       setBookingStatusFilter('all');
       setBookingPage(0);
     }
+    if (section === 'clients') setClientPage(0);
     setActiveMainSection(section);
     setSidebarOpen(false);
   };
@@ -497,6 +502,12 @@ function AdminDashboard({ onLogout }) {
       setBookingPage(Math.max(0, totalBookingPages - 1));
     }
   }, [bookingPage, totalBookingPages]);
+
+  useEffect(() => {
+    if (clientPage > totalClientPages - 1) {
+      setClientPage(Math.max(0, totalClientPages - 1));
+    }
+  }, [clientPage, totalClientPages]);
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -1235,7 +1246,7 @@ function AdminDashboard({ onLogout }) {
                       placeholder="Search name, email, or phone..."
                       aria-label="Search clients"
                       value={clientSearchTerm}
-                      onChange={(event) => setClientSearchTerm(event.target.value)}
+                      onChange={(event) => { setClientSearchTerm(event.target.value); setClientPage(0); }}
                     />
                   </div>
                   {isLoading ? (
@@ -1244,7 +1255,7 @@ function AdminDashboard({ onLogout }) {
                     <p className="helper-text">No clients match this search.</p>
                   ) : (
                     <div className="client-directory-list">
-                      {clients.map((client) => {
+                      {pagedClients.map((client) => {
                         const isExpanded = expandedClientKey === client.key;
                         const latestBooking = client.bookings[0];
                         return (
@@ -1278,6 +1289,7 @@ function AdminDashboard({ onLogout }) {
                                     onClick={() => {
                                       setSearchTerm('');
                                       setBookingStatusFilter('all');
+                                      setBookingPage(0);
                                       setActiveMainSection('bookings');
                                       setExpandedBookingId(booking._id);
                                     }}
@@ -1294,6 +1306,29 @@ function AdminDashboard({ onLogout }) {
                           </article>
                         );
                       })}
+                    </div>
+                  )}
+                  {!isLoading && clients.length > CLIENTS_PER_PAGE && (
+                    <div className="booking-pagination" aria-label="Client directory pagination">
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setClientPage((page) => Math.max(0, page - 1))}
+                        disabled={clientPage === 0}
+                        aria-label="Previous client page"
+                      >
+                        <ChevronLeft size={17} aria-hidden="true" />
+                      </button>
+                      <span>Page {clientPage + 1} of {totalClientPages} · {clients.length} clients</span>
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setClientPage((page) => Math.min(totalClientPages - 1, page + 1))}
+                        disabled={clientPage >= totalClientPages - 1}
+                        aria-label="Next client page"
+                      >
+                        <ChevronRight size={17} aria-hidden="true" />
+                      </button>
                     </div>
                   )}
                 </section>
