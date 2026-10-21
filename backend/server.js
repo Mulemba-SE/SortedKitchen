@@ -99,6 +99,21 @@ const bookingSchema = new mongoose.Schema({
   eventAddress: String,
   referralSource: String,
   eventDetails: String,
+  quote: {
+    currency: { type: String, uppercase: true, trim: true, default: 'KES' },
+    items: [{
+      description: { type: String, trim: true, maxlength: 120 },
+      quantity: { type: Number, min: 1 },
+      unitPrice: { type: Number, min: 0 },
+      lineTotal: { type: Number, min: 0 }
+    }],
+    total: { type: Number, min: 0 },
+    status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
+    updatedAt: Date,
+    updatedBy: String,
+    sentAt: Date,
+    sentBy: String
+  },
   status: { type: String, enum: ['pending', 'approved'], default: 'pending' },
   approvedAt: Date,
   approvalEmailSentAt: Date,
@@ -752,12 +767,120 @@ app.post('/api/bookings/:id/approve', requireAuth, requireAdmin, async (req, res
 
 app.put('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const updatedBooking = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    await new Activity({ actor: req.user?.email || '', action: 'Booking Updated', details: `Booking for ${req.body.name} was updated` }).save();
+    const editableFields = ['name', 'email', 'phone', 'date', 'time', 'guests', 'occasion', 'eventAddress', 'referralSource', 'eventDetails'];
+    const updates = Object.fromEntries(editableFields
+      .filter((field) => Object.hasOwn(req.body || {}, field))
+      .map((field) => [field, req.body[field]]));
+    const updatedBooking = await Booking.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!updatedBooking) return res.status(404).json({ error: 'Booking not found' });
+    await new Activity({ actor: req.user?.email || '', action: 'Booking Updated', details: `Booking for ${updatedBooking.name} was updated` }).save();
     res.json(updatedBooking);
   } catch (err) {
     console.error('Update booking error:', err);
     res.status(500).json({ error: 'Failed to update booking' });
+  }
+});
+
+app.put('/api/bookings/:id/quote', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const currency = String(req.body?.currency || '').trim().toUpperCase();
+    const items = req.body?.items;
+    if (!/^[A-Z]{3}$/.test(currency) || !Array.isArray(items) || items.length < 1 || items.length > 40) {
+      return res.status(400).json({ error: 'Choose a 3-letter currency and provide 1 to 40 quote items' });
+    }
+
+    const normalizedItems = [];
+    for (const item of items) {
+      const description = String(item?.description || '').trim();
+      const quantity = Number(item?.quantity);
+      const unitPrice = Number(item?.unitPrice);
+      if (!description || description.length > 120 || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000
+        || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1000000000) {
+        return res.status(400).json({ error: 'Each item needs a description, whole-number quantity, and non-negative unit price' });
+      }
+      const lineTotal = Math.round(quantity * unitPrice * 100) / 100;
+      normalizedItems.push({ description, quantity, unitPrice, lineTotal });
+    }
+
+    const total = Math.round(normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0) * 100) / 100;
+    const booking = await Booking.findByIdAndUpdate(req.params.id, {
+      quote: {
+        currency,
+        items: normalizedItems,
+        total,
+        status: 'draft',
+        updatedAt: new Date(),
+        updatedBy: req.user?.email || ''
+      }
+    }, { new: true, runValidators: true });
+
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Quote Updated',
+      details: `Estimate for ${booking.name || 'client'} saved at ${currency} ${total.toFixed(2)}`
+    }).save();
+    return res.json({ booking });
+  } catch (err) {
+    console.error('Save booking quote error:', err);
+    return res.status(500).json({ error: 'Failed to save booking estimate' });
+  }
+});
+
+app.post('/api/bookings/:id/quote/send', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!EMAIL_USER || !EMAIL_APP_PASSWORD) {
+      return res.status(503).json({ error: 'Email delivery is not configured on the server' });
+    }
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (!booking.email) return res.status(400).json({ error: 'This booking has no client email address' });
+    if (!booking.quote?.items?.length) return res.status(400).json({ error: 'Save an estimate before sending it' });
+
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+    const currency = booking.quote.currency || 'KES';
+    const itemRows = booking.quote.items.map((item) => (
+      `<tr><td>${escapeHtml(item.description)}</td><td>${item.quantity}</td><td>${currency} ${Number(item.unitPrice).toFixed(2)}</td><td>${currency} ${Number(item.lineTotal).toFixed(2)}</td></tr>`
+    )).join('');
+    const subject = `Catering estimate for ${booking.date || 'your event'} - Sorted Kitchen`;
+    const text = [
+      `Hello ${booking.name || 'there'},`,
+      '',
+      `Here is the catering estimate for your ${booking.occasion || 'event'} on ${booking.date || 'your requested date'}.`,
+      ...booking.quote.items.map((item) => `${item.description}: ${item.quantity} x ${currency} ${Number(item.unitPrice).toFixed(2)} = ${currency} ${Number(item.lineTotal).toFixed(2)}`),
+      '',
+      `Estimated total: ${currency} ${Number(booking.quote.total).toFixed(2)}`,
+      '',
+      'This is an estimate for review, not an invoice or payment request.',
+      '',
+      'Best regards,',
+      'Sorted Kitchen'
+    ].join('\n');
+    const html = `<p>Hello ${escapeHtml(booking.name || 'there')},</p><p>Here is the catering estimate for your ${escapeHtml(booking.occasion || 'event')} on ${escapeHtml(booking.date || 'your requested date')}.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th align="left">Item</th><th align="right">Qty</th><th align="right">Unit price</th><th align="right">Line total</th></tr></thead><tbody>${itemRows}</tbody></table><p style="text-align:right;font-size:18px"><strong>Estimated total: ${currency} ${Number(booking.quote.total).toFixed(2)}</strong></p><p>This is an estimate for review, not an invoice or payment request.</p><p>Best regards,<br>Sorted Kitchen</p>`;
+
+    await transporter.sendMail({
+      from: EMAIL_USER,
+      to: booking.email,
+      subject,
+      text,
+      html
+    });
+
+    booking.quote.status = 'sent';
+    booking.quote.sentAt = new Date();
+    booking.quote.sentBy = req.user?.email || '';
+    await booking.save();
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Quote Sent',
+      details: `Estimate emailed to ${booking.email} for ${currency} ${Number(booking.quote.total).toFixed(2)}`
+    }).save();
+    return res.json({ message: `Estimate sent to ${booking.email}.`, booking });
+  } catch (err) {
+    console.error('Send quote email error:', err);
+    return res.status(502).json({ error: 'Could not send estimate email. Check the mail server configuration and try again.' });
   }
 });
 

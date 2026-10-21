@@ -1232,6 +1232,147 @@ h6:is(#_heading-lock, *) {
   gap: 0.5rem;
 }
 
+.booking-quote-summary,
+.booking-quote-editor {
+  padding: 0.85rem;
+  border: 1px solid rgba(244, 212, 138, 0.28);
+  border-radius: 8px;
+  background: rgba(244, 212, 138, 0.045);
+}
+
+.booking-quote-summary > strong {
+  color: #f4d48a;
+}
+
+.booking-quote-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.quote-delivery-status {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: var(--secondary-text);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.quote-delivery-status.sent {
+  border-color: rgba(112, 202, 139, 0.4);
+  color: #95d5a4;
+}
+
+.quote-delivery-status.draft {
+  border-color: rgba(244, 212, 138, 0.35);
+  color: #f4d48a;
+}
+
+.booking-quote-summary ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.6rem 0;
+  padding-left: 1.2rem;
+}
+
+.booking-quote-summary li {
+  padding-left: 0.15rem;
+}
+
+.booking-quote-summary li span {
+  float: right;
+  margin-left: 0.75rem;
+  white-space: nowrap;
+}
+
+.booking-quote-summary small {
+  color: var(--secondary-text);
+}
+
+.quote-send-button {
+  margin-top: 0.65rem;
+}
+
+.booking-quote-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.booking-quote-editor {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.booking-quote-editor h6 {
+  margin: 0;
+  color: #f4d48a;
+  font-size: 0.95rem;
+}
+
+.booking-quote-editor label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  color: var(--secondary-text);
+  font-size: 0.8rem;
+}
+
+.booking-quote-editor input,
+.booking-quote-editor select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(8, 11, 24, 0.82);
+  color: #f5f1e8;
+  font: inherit;
+}
+
+.quote-currency-field {
+  max-width: 12rem;
+}
+
+.quote-line-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quote-line-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(5rem, 0.6fr) minmax(7rem, 0.8fr) auto;
+  align-items: end;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+}
+
+.quote-remove-line {
+  min-height: 36px;
+}
+
+.quote-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .quote-line-item {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quote-line-item label:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
 .booking-status-pill {
   display: inline-flex;
   align-items: center;

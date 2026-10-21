@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import LoadingSpinner from './LoadingSpinner';
 
 function AdminDashboard({ onLogout }) {
@@ -71,6 +72,10 @@ function AdminDashboard({ onLogout }) {
   const [editingBookingId, setEditingBookingId] = useState(null);
   const [bookingForm, setBookingForm] = useState(null);
   const [savingBookingId, setSavingBookingId] = useState(null);
+  const [editingQuoteId, setEditingQuoteId] = useState(null);
+  const [quoteForm, setQuoteForm] = useState({ currency: 'KES', items: [] });
+  const [savingQuoteId, setSavingQuoteId] = useState(null);
+  const [sendingQuoteId, setSendingQuoteId] = useState(null);
   const [bookingActionStatus, setBookingActionStatus] = useState(null);
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const token = localStorage.getItem('adminToken');
@@ -342,6 +347,189 @@ function AdminDashboard({ onLogout }) {
     } finally {
       setSavingBookingId(null);
     }
+  };
+
+  const handleQuoteEdit = (booking) => {
+    setEditingQuoteId(booking._id);
+    setQuoteForm({
+      currency: booking.quote?.currency || 'KES',
+      items: booking.quote?.items?.length
+        ? booking.quote.items.map((item) => ({
+          description: item.description || '',
+          quantity: String(item.quantity || 1),
+          unitPrice: String(item.unitPrice ?? 0)
+        }))
+        : [{ description: '', quantity: '1', unitPrice: '' }]
+    });
+    setBookingActionStatus(null);
+  };
+
+  const handleQuoteSave = async (event, bookingId) => {
+    event.preventDefault();
+    if (!token) return;
+    setSavingQuoteId(bookingId);
+    setBookingActionStatus(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/bookings/${bookingId}/quote`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          currency: quoteForm.currency,
+          items: quoteForm.items.map((item) => ({
+            ...item,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice)
+          }))
+        })
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.booking) {
+        setBookingActionStatus({ type: 'error', message: data.error || 'Failed to save estimate.' });
+        return;
+      }
+      setBookings((current) => current.map((booking) => (
+        booking._id === data.booking._id ? data.booking : booking
+      )));
+      setEditingQuoteId(null);
+      setBookingActionStatus({ type: 'success', message: 'Estimate saved for admin review.' });
+    } catch {
+      setBookingActionStatus({ type: 'error', message: 'Could not connect to save estimate.' });
+    } finally {
+      setSavingQuoteId(null);
+    }
+  };
+
+  const handleQuoteSend = async (bookingId) => {
+    if (!token) return;
+    setSendingQuoteId(bookingId);
+    setBookingActionStatus(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/bookings/${bookingId}/quote/send`, {
+        method: 'POST',
+        headers: authHeaders
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.booking) {
+        setBookingActionStatus({ type: 'error', message: data.error || 'Failed to send estimate.' });
+        return;
+      }
+      setBookings((current) => current.map((booking) => (
+        booking._id === data.booking._id ? data.booking : booking
+      )));
+      setBookingActionStatus({ type: 'success', message: data.message || 'Estimate emailed to the client.' });
+    } catch {
+      setBookingActionStatus({ type: 'error', message: 'Could not connect to send the estimate.' });
+    } finally {
+      setSendingQuoteId(null);
+    }
+  };
+
+  const handleQuoteDownload = (booking) => {
+    if (!booking.quote?.items?.length) return;
+    const document = new jsPDF();
+    const pageWidth = document.internal.pageSize.getWidth();
+    const pageHeight = document.internal.pageSize.getHeight();
+    const margin = 18;
+    const currency = booking.quote.currency || 'KES';
+    let cursorY = 22;
+    const ensureSpace = (height) => {
+      if (cursorY + height > pageHeight - margin) {
+        document.addPage();
+        cursorY = margin;
+      }
+    };
+
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(20);
+    document.text('Sorted Kitchen', margin, cursorY);
+    cursorY += 10;
+    document.setFontSize(16);
+    document.text('CATERING ESTIMATE', margin, cursorY);
+    cursorY += 7;
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(9);
+    document.text('ESTIMATE ONLY - NOT AN INVOICE OR PAYMENT REQUEST', margin, cursorY);
+    cursorY += 12;
+
+    const details = [
+      `Prepared for: ${booking.name || 'Client'}`,
+      `Email: ${booking.email || 'Not provided'}`,
+      `Event: ${booking.occasion || 'Catering service'}`,
+      `Date and time: ${booking.date || 'Not set'}${booking.time ? ` at ${booking.time}` : ''}`,
+      `Guests: ${booking.guests || 'Not specified'}`,
+      booking.eventAddress ? `Location: ${booking.eventAddress}` : ''
+    ].filter(Boolean);
+    details.forEach((line) => {
+      const wrapped = document.splitTextToSize(line, pageWidth - margin * 2);
+      ensureSpace(wrapped.length * 5 + 2);
+      document.text(wrapped, margin, cursorY);
+      cursorY += wrapped.length * 5 + 2;
+    });
+    cursorY += 4;
+
+    const columns = { description: margin, quantity: pageWidth - margin - 78, unit: pageWidth - margin - 48, total: pageWidth - margin };
+    const drawTableHeader = () => {
+      ensureSpace(12);
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(9);
+      document.text('Item / service', columns.description, cursorY);
+      document.text('Qty', columns.quantity, cursorY, { align: 'right' });
+      document.text('Unit price', columns.unit, cursorY, { align: 'right' });
+      document.text('Line total', columns.total, cursorY, { align: 'right' });
+      cursorY += 3;
+      document.setDrawColor(170, 170, 170);
+      document.line(margin, cursorY, pageWidth - margin, cursorY);
+      cursorY += 6;
+      document.setFont('helvetica', 'normal');
+    };
+    drawTableHeader();
+
+    booking.quote.items.forEach((item) => {
+      const descriptionLines = document.splitTextToSize(String(item.description || ''), columns.quantity - columns.description - 5);
+      const rowHeight = Math.max(7, descriptionLines.length * 5);
+      if (cursorY + rowHeight > pageHeight - margin - 24) {
+        document.addPage();
+        cursorY = margin;
+        drawTableHeader();
+      }
+      document.text(descriptionLines, columns.description, cursorY);
+      document.text(String(item.quantity), columns.quantity, cursorY, { align: 'right' });
+      document.text(`${currency} ${Number(item.unitPrice || 0).toFixed(2)}`, columns.unit, cursorY, { align: 'right' });
+      document.text(`${currency} ${Number(item.lineTotal || 0).toFixed(2)}`, columns.total, cursorY, { align: 'right' });
+      cursorY += rowHeight + 3;
+    });
+
+    ensureSpace(18);
+    document.setDrawColor(170, 170, 170);
+    document.line(margin, cursorY, pageWidth - margin, cursorY);
+    cursorY += 9;
+    document.setFont('helvetica', 'bold');
+    document.setFontSize(13);
+    document.text(`Estimated total: ${currency} ${Number(booking.quote.total || 0).toFixed(2)}`, pageWidth - margin, cursorY, { align: 'right' });
+    cursorY += 10;
+    document.setFont('helvetica', 'normal');
+    document.setFontSize(9);
+    document.text('This estimate is for review and does not constitute an invoice, booking confirmation, or payment request.', margin, cursorY, {
+      maxWidth: pageWidth - margin * 2
+    });
+    document.save(`sorted-kitchen-estimate-${booking.date || booking._id}.pdf`);
+  };
+
+  const handleQuoteItemChange = (index, field, value) => {
+    setQuoteForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [field]: value } : item
+      ))
+    }));
   };
 
   const handleExportBookings = () => {
@@ -1792,6 +1980,47 @@ function AdminDashboard({ onLogout }) {
                             <div><strong>Occasion:</strong> {booking.occasion || '--'}</div>
                             <div><strong>Event address:</strong> {booking.eventAddress || '--'}</div>
                             {booking.eventDetails && <div><strong>Event details:</strong> {booking.eventDetails}</div>}
+                            {booking.quote?.items?.length > 0 && (
+                              <section className="booking-quote-summary" aria-label="Saved estimate">
+                                <div className="booking-quote-summary-heading">
+                                  <strong>Estimate · {booking.quote.currency} {Number(booking.quote.total || 0).toFixed(2)}</strong>
+                                  <span className={`quote-delivery-status ${booking.quote.status === 'sent' ? 'sent' : 'draft'}`}>
+                                    {booking.quote.status === 'sent' ? 'Sent' : 'Draft'}
+                                  </span>
+                                </div>
+                                <ul>
+                                  {booking.quote.items.map((item, index) => (
+                                    <li key={`${item.description}-${index}`}>
+                                      {item.description} · {item.quantity} × {booking.quote.currency} {Number(item.unitPrice || 0).toFixed(2)}
+                                      <span>{booking.quote.currency} {Number(item.lineTotal || 0).toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <small>
+                                  Estimate only · last updated {booking.quote.updatedAt ? new Date(booking.quote.updatedAt).toLocaleString() : '--'}
+                                  {booking.quote.sentAt ? ` · emailed ${new Date(booking.quote.sentAt).toLocaleString()}` : ''}
+                                </small>
+                                {editingQuoteId !== booking._id && (
+                                  <div className="booking-quote-actions">
+                                    <button
+                                      type="button"
+                                      className="btn-secondary"
+                                      onClick={() => handleQuoteDownload(booking)}
+                                    >
+                                      Download PDF
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-secondary"
+                                      onClick={() => handleQuoteSend(booking._id)}
+                                      disabled={sendingQuoteId === booking._id || savingQuoteId === booking._id}
+                                    >
+                                      {sendingQuoteId === booking._id ? 'Sending...' : booking.quote.status === 'sent' ? 'Resend estimate' : 'Email estimate'}
+                                    </button>
+                                  </div>
+                                )}
+                              </section>
+                            )}
                             <div><strong>Status:</strong> {booking.status === 'approved' ? 'Approved' : 'Pending approval'}</div>
                             {booking.approvedAt && (
                               <div><strong>Approved:</strong> {new Date(booking.approvedAt).toLocaleString()}</div>
@@ -1804,6 +2033,13 @@ function AdminDashboard({ onLogout }) {
                                 onClick={() => handleBookingEdit(booking)}
                               >
                                 Edit booking
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => handleQuoteEdit(booking)}
+                              >
+                                {booking.quote?.items?.length ? 'Edit estimate' : 'Create estimate'}
                               </button>
                               {(booking.status || 'pending') !== 'approved' && (
                                 <button
@@ -1823,6 +2059,97 @@ function AdminDashboard({ onLogout }) {
                                 Delete
                               </button>
                             </div>
+                            {editingQuoteId === booking._id && (
+                              <form className="booking-quote-editor" onSubmit={(event) => handleQuoteSave(event, booking._id)}>
+                                <h6>Itemized estimate</h6>
+                                <label className="quote-currency-field">
+                                  Currency
+                                  <select
+                                    value={quoteForm.currency}
+                                    onChange={(event) => setQuoteForm((current) => ({ ...current, currency: event.target.value }))}
+                                  >
+                                    <option value="KES">KES</option>
+                                    <option value="USD">USD</option>
+                                    <option value="EUR">EUR</option>
+                                    <option value="GBP">GBP</option>
+                                  </select>
+                                </label>
+                                <div className="quote-line-list">
+                                  {quoteForm.items.map((item, index) => (
+                                    <div className="quote-line-item" key={`quote-line-${index}`}>
+                                      <label>
+                                        Item or service
+                                        <input
+                                          value={item.description}
+                                          maxLength="120"
+                                          onChange={(event) => handleQuoteItemChange(index, 'description', event.target.value)}
+                                          required
+                                        />
+                                      </label>
+                                      <label>
+                                        Quantity
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          max="10000"
+                                          step="1"
+                                          value={item.quantity}
+                                          onChange={(event) => handleQuoteItemChange(index, 'quantity', event.target.value)}
+                                          required
+                                        />
+                                      </label>
+                                      <label>
+                                        Unit price ({quoteForm.currency})
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={item.unitPrice}
+                                          onChange={(event) => handleQuoteItemChange(index, 'unitPrice', event.target.value)}
+                                          required
+                                        />
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="btn-danger quote-remove-line"
+                                        onClick={() => setQuoteForm((current) => ({
+                                          ...current,
+                                          items: current.items.filter((_, itemIndex) => itemIndex !== index)
+                                        }))}
+                                        disabled={quoteForm.items.length <= 1 || savingQuoteId === booking._id}
+                                        aria-label={`Remove estimate item ${index + 1}`}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="quote-editor-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => setQuoteForm((current) => ({
+                                      ...current,
+                                      items: [...current.items, { description: '', quantity: '1', unitPrice: '' }]
+                                    }))}
+                                    disabled={quoteForm.items.length >= 40 || savingQuoteId === booking._id}
+                                  >
+                                    Add line item
+                                  </button>
+                                  <button type="submit" className="btn-primary" disabled={savingQuoteId === booking._id}>
+                                    {savingQuoteId === booking._id ? 'Saving...' : 'Save estimate'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => setEditingQuoteId(null)}
+                                    disabled={savingQuoteId === booking._id}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </form>
+                            )}
                               </>
                             )}
                           </div>
