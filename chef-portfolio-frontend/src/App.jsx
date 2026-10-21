@@ -53,9 +53,9 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={
-          <div>
-            <ShowcaseHome isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} />
-          </div>
+          isLoggedIn
+            ? <ShowcaseHome isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} />
+            : <Login onLogin={handleLogin} />
         } />
         <Route path="/menu" element={<MenuPage isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} />} />
         <Route path="/gallery" element={<GalleryPage isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} />} />
