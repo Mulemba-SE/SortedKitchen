@@ -9,10 +9,12 @@ function AdminDashboard({ onLogout }) {
   const CLIENTS_PER_PAGE = 10;
   const REVIEWS_PER_PAGE = 10;
   const MESSAGES_PER_PAGE = 10;
+  const ACTIVITIES_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
   const [activityActionFilter, setActivityActionFilter] = useState('all');
+  const [activityPage, setActivityPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [clientPage, setClientPage] = useState(0);
@@ -407,6 +409,8 @@ function AdminDashboard({ onLogout }) {
     return !query || [item.user, item.action, item.target, item.details]
       .some((value) => String(value || '').toLowerCase().includes(query));
   });
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / ACTIVITIES_PER_PAGE));
+  const pagedActivities = filteredActivities.slice(activityPage * ACTIVITIES_PER_PAGE, (activityPage + 1) * ACTIVITIES_PER_PAGE);
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
   const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
   const today = new Date();
@@ -538,6 +542,12 @@ function AdminDashboard({ onLogout }) {
       setMessagePage(Math.max(0, totalMessagePages - 1));
     }
   }, [messagePage, totalMessagePages]);
+
+  useEffect(() => {
+    if (activityPage > totalActivityPages - 1) {
+      setActivityPage(Math.max(0, totalActivityPages - 1));
+    }
+  }, [activityPage, totalActivityPages]);
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -1801,13 +1811,13 @@ function AdminDashboard({ onLogout }) {
                     placeholder="Search actions or details..."
                     aria-label="Search activity history"
                     value={activitySearchTerm}
-                    onChange={(event) => setActivitySearchTerm(event.target.value)}
+                    onChange={(event) => { setActivitySearchTerm(event.target.value); setActivityPage(0); }}
                   />
                   <select
                     className="sort-select"
                     aria-label="Filter activity by action"
                     value={activityActionFilter}
-                    onChange={(event) => setActivityActionFilter(event.target.value)}
+                    onChange={(event) => { setActivityActionFilter(event.target.value); setActivityPage(0); }}
                   >
                     <option value="all">All actions</option>
                     {activityActions.map((action) => <option key={action} value={action}>{action}</option>)}
@@ -1817,7 +1827,7 @@ function AdminDashboard({ onLogout }) {
                   {filteredActivities.length === 0 ? (
                     <p className="helper-text">{activities.length ? 'No activity matches these filters.' : 'No recent activity.'}</p>
                   ) : (
-                    filteredActivities.map((item) => (
+                    pagedActivities.map((item) => (
                       <div key={item._id || `${item.action}-${item.timestamp}`} className="activity-item">
                         <span className="activity-action">{item.user || 'Chef Admin'} {item.action || 'updated dashboard'}</span>
                         <span className="activity-details">{item.target || item.details || 'System update'}</span>
@@ -1826,6 +1836,29 @@ function AdminDashboard({ onLogout }) {
                     ))
                   )}
                 </div>
+                {filteredActivities.length > ACTIVITIES_PER_PAGE && (
+                  <div className="booking-pagination" aria-label="Activity history pagination">
+                    <button
+                      type="button"
+                      className="booking-page-button"
+                      onClick={() => setActivityPage((page) => Math.max(0, page - 1))}
+                      disabled={activityPage === 0}
+                      aria-label="Previous activity page"
+                    >
+                      <ChevronLeft size={17} aria-hidden="true" />
+                    </button>
+                    <span>Page {activityPage + 1} of {totalActivityPages} · {filteredActivities.length} entries</span>
+                    <button
+                      type="button"
+                      className="booking-page-button"
+                      onClick={() => setActivityPage((page) => Math.min(totalActivityPages - 1, page + 1))}
+                      disabled={activityPage >= totalActivityPages - 1}
+                      aria-label="Next activity page"
+                    >
+                      <ChevronRight size={17} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
               </section>
               )}
 
