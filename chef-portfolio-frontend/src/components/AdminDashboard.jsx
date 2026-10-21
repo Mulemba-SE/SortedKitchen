@@ -455,6 +455,30 @@ function AdminDashboard({ onLogout }) {
         .some((value) => String(value || '').toLowerCase().includes(query));
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+  const handleExportClients = () => {
+    const escapeCell = (value) => {
+      const text = String(value ?? '').replace(/[\r\n]+/g, ' ');
+      const safeText = /^[\s]*[=+@\-\t]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replace(/"/g, '""')}"`;
+    };
+    const columns = ['Name', 'Email', 'Phone', 'Booking Count', 'Event History'];
+    const rows = clients.map((client) => {
+      const phone = client.bookings.find((booking) => booking.phone)?.phone || '';
+      const history = client.bookings
+        .map((booking) => [booking.date, booking.time, booking.occasion, booking.status || 'pending'].filter(Boolean).join(' '))
+        .join(' | ');
+      return [client.name || 'Client', client.email, phone, client.bookings.length, history];
+    });
+    const csv = [columns, ...rows].map((row) => row.map(escapeCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `clients-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
   const totalClientPages = Math.max(1, Math.ceil(clients.length / CLIENTS_PER_PAGE));
   const pagedClients = clients.slice(clientPage * CLIENTS_PER_PAGE, (clientPage + 1) * CLIENTS_PER_PAGE);
   const mealCategories = [...new Set(meals.map((meal) => String(meal.category || '').trim()).filter(Boolean))]
@@ -1341,6 +1365,14 @@ function AdminDashboard({ onLogout }) {
                       value={clientSearchTerm}
                       onChange={(event) => { setClientSearchTerm(event.target.value); setClientPage(0); }}
                     />
+                    <button
+                      type="button"
+                      className="btn-secondary client-export-button"
+                      onClick={handleExportClients}
+                      disabled={clients.length === 0}
+                    >
+                      Export CSV ({clients.length})
+                    </button>
                   </div>
                   {isLoading ? (
                     <LoadingSpinner />
