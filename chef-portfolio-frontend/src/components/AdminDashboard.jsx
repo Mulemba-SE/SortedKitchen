@@ -28,6 +28,9 @@ function AdminDashboard({ onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeMainSection, setActiveMainSection] = useState('bookings');
   const [approvingBookingId, setApprovingBookingId] = useState(null);
+  const [editingBookingId, setEditingBookingId] = useState(null);
+  const [bookingForm, setBookingForm] = useState(null);
+  const [savingBookingId, setSavingBookingId] = useState(null);
   const [bookingActionStatus, setBookingActionStatus] = useState(null);
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const token = localStorage.getItem('adminToken');
@@ -213,6 +216,67 @@ function AdminDashboard({ onLogout }) {
       setBookingActionStatus({ type: 'error', message: 'Failed to approve booking.' });
     } finally {
       setApprovingBookingId(null);
+    }
+  };
+
+  const handleBookingEdit = (booking) => {
+    setEditingBookingId(booking._id);
+    setBookingForm({
+      name: booking.name || '',
+      email: booking.email || '',
+      phone: booking.phone || '',
+      date: booking.date || '',
+      time: booking.time || '',
+      guests: booking.guests ?? '',
+      occasion: booking.occasion || '',
+      eventAddress: booking.eventAddress || '',
+      eventDetails: booking.eventDetails || ''
+    });
+    setBookingActionStatus(null);
+  };
+
+  const handleBookingFormChange = (event) => {
+    const { name, value } = event.target;
+    setBookingForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleBookingSave = async (event, bookingId) => {
+    event.preventDefault();
+    if (!token || !bookingForm) return;
+    setSavingBookingId(bookingId);
+    setBookingActionStatus(null);
+
+    try {
+      const response = await fetch(`${apiUrl}/api/bookings/${bookingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          ...bookingForm,
+          guests: bookingForm.guests === '' ? '' : Number(bookingForm.guests)
+        })
+      });
+
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+
+      const updatedBooking = await response.json().catch(() => null);
+      if (!response.ok || !updatedBooking) {
+        setBookingActionStatus({ type: 'error', message: 'Failed to update booking.' });
+        return;
+      }
+
+      setBookings((currentBookings) => currentBookings.map((booking) => (
+        booking._id === updatedBooking._id ? updatedBooking : booking
+      )));
+      setEditingBookingId(null);
+      setBookingForm(null);
+      setBookingActionStatus({ type: 'success', message: 'Booking updated.' });
+    } catch {
+      setBookingActionStatus({ type: 'error', message: 'Failed to update booking.' });
+    } finally {
+      setSavingBookingId(null);
     }
   };
 
@@ -798,14 +862,78 @@ function AdminDashboard({ onLogout }) {
                         </button>
                         {isOpen && (
                           <div className="booking-details">
+                            {editingBookingId === booking._id && bookingForm ? (
+                              <form className="admin-form" onSubmit={(event) => handleBookingSave(event, booking._id)}>
+                                <label>
+                                  Name
+                                  <input name="name" value={bookingForm.name} onChange={handleBookingFormChange} required />
+                                </label>
+                                <label>
+                                  Email
+                                  <input name="email" type="email" value={bookingForm.email} onChange={handleBookingFormChange} required />
+                                </label>
+                                <label>
+                                  Phone
+                                  <input name="phone" type="tel" value={bookingForm.phone} onChange={handleBookingFormChange} />
+                                </label>
+                                <label>
+                                  Event date
+                                  <input name="date" type="date" value={bookingForm.date} onChange={handleBookingFormChange} required />
+                                </label>
+                                <label>
+                                  Event time
+                                  <input name="time" type="time" value={bookingForm.time} onChange={handleBookingFormChange} required />
+                                </label>
+                                <label>
+                                  Guests
+                                  <input name="guests" type="number" min="1" step="1" value={bookingForm.guests} onChange={handleBookingFormChange} required />
+                                </label>
+                                <label>
+                                  Occasion
+                                  <input name="occasion" value={bookingForm.occasion} onChange={handleBookingFormChange} />
+                                </label>
+                                <label>
+                                  Event address
+                                  <input name="eventAddress" value={bookingForm.eventAddress} onChange={handleBookingFormChange} />
+                                </label>
+                                <label>
+                                  Event details
+                                  <textarea name="eventDetails" value={bookingForm.eventDetails} onChange={handleBookingFormChange} rows="3" />
+                                </label>
+                                <div className="booking-actions">
+                                  <button type="submit" className="btn-secondary" disabled={savingBookingId === booking._id}>
+                                    {savingBookingId === booking._id ? 'Saving...' : 'Save changes'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => { setEditingBookingId(null); setBookingForm(null); }}
+                                    disabled={savingBookingId === booking._id}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
                             <div><strong>Email:</strong> {booking.email}</div>
+                            <div><strong>Phone:</strong> {booking.phone || '--'}</div>
                             <div><strong>Occasion:</strong> {booking.occasion || '--'}</div>
+                            <div><strong>Event address:</strong> {booking.eventAddress || '--'}</div>
+                            {booking.eventDetails && <div><strong>Event details:</strong> {booking.eventDetails}</div>}
                             <div><strong>Status:</strong> {booking.status === 'approved' ? 'Approved' : 'Pending approval'}</div>
                             {booking.approvedAt && (
                               <div><strong>Approved:</strong> {new Date(booking.approvedAt).toLocaleString()}</div>
                             )}
                             <div><strong>Created:</strong> {booking.createdAt ? new Date(booking.createdAt).toLocaleString() : '--'}</div>
                             <div className="booking-actions">
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => handleBookingEdit(booking)}
+                              >
+                                Edit booking
+                              </button>
                               {(booking.status || 'pending') !== 'approved' && (
                                 <button
                                   type="button"
@@ -824,6 +952,8 @@ function AdminDashboard({ onLogout }) {
                                 Delete
                               </button>
                             </div>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
