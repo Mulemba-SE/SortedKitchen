@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 
 function AdminDashboard({ onLogout }) {
@@ -15,6 +15,9 @@ function AdminDashboard({ onLogout }) {
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [meals, setMeals] = useState([]);
@@ -838,6 +841,43 @@ function AdminDashboard({ onLogout }) {
     }
   };
 
+  const handleRefreshDashboard = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshStatus(null);
+    try {
+      const endpoints = [
+        `${apiUrl}/api/bookings`,
+        `${apiUrl}/api/activity`,
+        `${apiUrl}/api/admin/reviews`,
+        `${apiUrl}/api/meals`
+      ];
+      const responses = await Promise.all(endpoints.map((endpoint, index) => fetch(endpoint, {
+        headers: index < 3 ? authHeaders : {}
+      })));
+      if (responses.some((response) => response.status === 401)) {
+        handleAuthExpired();
+        throw new Error('Session expired. Please log in again.');
+      }
+      if (responses.some((response) => !response.ok)) {
+        throw new Error('Some dashboard data could not be refreshed.');
+      }
+      const [nextBookings, nextActivities, nextReviews, nextMeals] = await Promise.all(
+        responses.map((response) => response.json())
+      );
+      setBookings(Array.isArray(nextBookings) ? nextBookings : []);
+      setActivities(Array.isArray(nextActivities) ? nextActivities : []);
+      setReviews(Array.isArray(nextReviews) ? nextReviews : []);
+      setMeals(Array.isArray(nextMeals) ? nextMeals : []);
+      setLastRefreshedAt(new Date());
+      setRefreshStatus({ type: 'success', message: 'Dashboard data refreshed.' });
+    } catch (error) {
+      setRefreshStatus({ type: 'error', message: error.message || 'Could not refresh dashboard data.' });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   return (
     <div className="admin-dashboard">
       <header className="admin-topbar">
@@ -937,6 +977,15 @@ function AdminDashboard({ onLogout }) {
               </button>
             </div>
           )}
+          <div className="admin-overview-toolbar">
+            <div className="admin-refresh-feedback" aria-live="polite">
+              {refreshStatus ? <span className={refreshStatus.type}>{refreshStatus.message}</span> : lastRefreshedAt ? `Updated ${lastRefreshedAt.toLocaleTimeString()}` : null}
+            </div>
+            <button type="button" className="admin-refresh-button" onClick={handleRefreshDashboard} disabled={isRefreshing}>
+              <RefreshCw size={16} aria-hidden="true" className={isRefreshing ? 'spinning' : ''} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh data'}</span>
+            </button>
+          </div>
           <div className="stats-container" id="overview">
             <button type="button" className="stat-card" onClick={() => openOverviewSection('bookings')}>
               <h5>All Bookings</h5>

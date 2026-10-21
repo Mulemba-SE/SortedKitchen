@@ -5985,6 +5985,55 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   outline-offset: 3px;
 }
 
+:root body .admin-dashboard .admin-overview-toolbar {
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+:root body .admin-dashboard .admin-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgba(244, 212, 138, 0.35);
+  border-radius: 8px;
+  background: rgba(8, 11, 24, 0.55);
+  color: #f4d48a;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard .admin-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+:root body .admin-dashboard .admin-refresh-button .spinning {
+  animation: admin-refresh-spin 0.9s linear infinite;
+}
+
+:root body .admin-dashboard .admin-refresh-feedback {
+  min-width: 0;
+  color: var(--secondary-text);
+  font-size: 0.8rem;
+}
+
+:root body .admin-dashboard .admin-refresh-feedback .success {
+  color: #95d5a4;
+}
+
+:root body .admin-dashboard .admin-refresh-feedback .error {
+  color: #ff9b9b;
+}
+
+@keyframes admin-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 :root body .admin-dashboard .stat-link {
   color: #b9c0dd;
   font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif !important;
