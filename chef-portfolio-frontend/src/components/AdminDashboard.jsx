@@ -7,6 +7,7 @@ function AdminDashboard({ onLogout }) {
   const MEALS_PER_PAGE = 10;
   const BOOKINGS_PER_PAGE = 10;
   const CLIENTS_PER_PAGE = 10;
+  const REVIEWS_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
@@ -28,6 +29,9 @@ function AdminDashboard({ onLogout }) {
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [meals, setMeals] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [reviewSearchTerm, setReviewSearchTerm] = useState('');
+  const [reviewVisibilityFilter, setReviewVisibilityFilter] = useState('all');
+  const [reviewPage, setReviewPage] = useState(0);
   const [reviewForm, setReviewForm] = useState({ author: '', role: '', text: '', rating: '5', published: true });
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -382,6 +386,15 @@ function AdminDashboard({ onLogout }) {
   });
   const totalBookingPages = Math.max(1, Math.ceil(filteredBookings.length / BOOKINGS_PER_PAGE));
   const pagedBookings = filteredBookings.slice(bookingPage * BOOKINGS_PER_PAGE, (bookingPage + 1) * BOOKINGS_PER_PAGE);
+  const filteredReviews = reviews.filter((review) => {
+    if (reviewVisibilityFilter === 'published' && !review.published) return false;
+    if (reviewVisibilityFilter === 'hidden' && review.published) return false;
+    const query = reviewSearchTerm.trim().toLowerCase();
+    return !query || [review.author, review.role, review.text]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
+  const totalReviewPages = Math.max(1, Math.ceil(filteredReviews.length / REVIEWS_PER_PAGE));
+  const pagedReviews = filteredReviews.slice(reviewPage * REVIEWS_PER_PAGE, (reviewPage + 1) * REVIEWS_PER_PAGE);
 
   const totalBookings = bookings.length;
   const activityActions = [...new Set(activities.map((item) => item.action || 'Other'))].sort();
@@ -508,6 +521,12 @@ function AdminDashboard({ onLogout }) {
       setClientPage(Math.max(0, totalClientPages - 1));
     }
   }, [clientPage, totalClientPages]);
+
+  useEffect(() => {
+    if (reviewPage > totalReviewPages - 1) {
+      setReviewPage(Math.max(0, totalReviewPages - 1));
+    }
+  }, [reviewPage, totalReviewPages]);
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -1142,6 +1161,26 @@ function AdminDashboard({ onLogout }) {
                     <h5>Guest Reviews</h5>
                     <span>{reviews.filter((review) => review.published).length} published · {reviews.length} total</span>
                   </div>
+                  <div className="review-manager-filters">
+                    <input
+                      type="search"
+                      className="search-input"
+                      placeholder="Search guest or review text..."
+                      aria-label="Search reviews"
+                      value={reviewSearchTerm}
+                      onChange={(event) => { setReviewSearchTerm(event.target.value); setReviewPage(0); }}
+                    />
+                    <select
+                      className="sort-select"
+                      aria-label="Filter reviews by visibility"
+                      value={reviewVisibilityFilter}
+                      onChange={(event) => { setReviewVisibilityFilter(event.target.value); setReviewPage(0); }}
+                    >
+                      <option value="all">All reviews</option>
+                      <option value="published">Published</option>
+                      <option value="hidden">Hidden</option>
+                    </select>
+                  </div>
                   <form className="review-editor admin-form" onSubmit={handleReviewSave}>
                     <label>
                       Guest name
@@ -1200,11 +1239,11 @@ function AdminDashboard({ onLogout }) {
                     </div>
                   </form>
                   {reviewStatus && <p className={`helper-text ${reviewStatus.type}`} role="status">{reviewStatus.message}</p>}
-                  {reviews.length === 0 ? (
-                    <p className="helper-text">No reviews have been added yet.</p>
+                  {filteredReviews.length === 0 ? (
+                    <p className="helper-text">{reviews.length ? 'No reviews match these filters.' : 'No reviews have been added yet.'}</p>
                   ) : (
                     <div className="review-manager-list">
-                      {reviews.map((review) => (
+                      {pagedReviews.map((review) => (
                         <article className="review-manager-item" key={review._id}>
                           <div className="review-manager-copy">
                             <div className="review-manager-heading">
@@ -1228,6 +1267,29 @@ function AdminDashboard({ onLogout }) {
                           </div>
                         </article>
                       ))}
+                    </div>
+                  )}
+                  {filteredReviews.length > REVIEWS_PER_PAGE && (
+                    <div className="booking-pagination" aria-label="Review list pagination">
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setReviewPage((page) => Math.max(0, page - 1))}
+                        disabled={reviewPage === 0}
+                        aria-label="Previous review page"
+                      >
+                        <ChevronLeft size={17} aria-hidden="true" />
+                      </button>
+                      <span>Page {reviewPage + 1} of {totalReviewPages} · {filteredReviews.length} reviews</span>
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setReviewPage((page) => Math.min(totalReviewPages - 1, page + 1))}
+                        disabled={reviewPage >= totalReviewPages - 1}
+                        aria-label="Next review page"
+                      >
+                        <ChevronRight size={17} aria-hidden="true" />
+                      </button>
                     </div>
                   )}
                 </section>

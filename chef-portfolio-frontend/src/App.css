@@ -9675,6 +9675,18 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   background: rgba(255, 255, 255, 0.025);
 }
 
+:root body .admin-dashboard .review-manager-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+:root body .admin-dashboard .review-manager-filters .search-input,
+:root body .admin-dashboard .review-manager-filters .sort-select {
+  width: 100%;
+}
+
 :root body .admin-dashboard .review-editor label {
   display: grid;
   gap: 0.35rem;
@@ -9782,6 +9794,10 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   }
 
   :root body .admin-dashboard .review-editor {
+    grid-template-columns: 1fr;
+  }
+
+  :root body .admin-dashboard .review-manager-filters {
     grid-template-columns: 1fr;
   }
 
