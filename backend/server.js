@@ -110,6 +110,7 @@ const Booking = mongoose.model('Booking', bookingSchema);
 
 // Activity Schema
 const activitySchema = new mongoose.Schema({
+  actor: String,
   action: String,
   details: String,
   timestamp: { type: Date, default: Date.now }
@@ -684,7 +685,7 @@ app.post('/api/book', requireAuth, async (req, res) => {
     console.log('Received booking:', req.body);
 
     // Log Activity
-    await new Activity({ action: 'New Booking', details: `${req.body.name} requested a booking for ${req.body.guests} guests` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'New Booking', details: `${req.body.name} requested a booking for ${req.body.guests} guests` }).save();
 
     res.status(200).json({ message: 'Booking request received successfully!', booking: newBooking });
   } catch (err) {
@@ -706,7 +707,7 @@ app.get('/api/bookings', requireAuth, requireAdmin, async (req, res) => {
 app.delete('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await Booking.findByIdAndDelete(req.params.id);
-    await new Activity({ action: 'Booking Deleted', details: `Booking ID ${req.params.id} was removed` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'Booking Deleted', details: `Booking ID ${req.params.id} was removed` }).save();
     res.status(200).json({ message: 'Booking deleted successfully' });
   } catch (err) {
     console.error('Delete booking error:', err);
@@ -737,6 +738,7 @@ app.post('/api/bookings/:id/approve', requireAuth, requireAdmin, async (req, res
     await booking.save();
 
     await new Activity({
+      actor: req.user?.email || '',
       action: 'Booking Approved',
       details: `${booking.name || 'Client'} was notified at ${booking.email}`
     }).save();
@@ -751,7 +753,7 @@ app.post('/api/bookings/:id/approve', requireAuth, requireAdmin, async (req, res
 app.put('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const updatedBooking = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    await new Activity({ action: 'Booking Updated', details: `Booking for ${req.body.name} was updated` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'Booking Updated', details: `Booking for ${req.body.name} was updated` }).save();
     res.json(updatedBooking);
   } catch (err) {
     console.error('Update booking error:', err);
@@ -806,7 +808,7 @@ app.post('/api/reviews', requireAuth, requireAdmin, async (req, res) => {
       rating,
       published: req.body?.published !== false
     });
-    await new Activity({ action: 'Review Created', details: `Review from ${author} was added` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'Review Created', details: `Review from ${author} was added` }).save();
     res.status(201).json(review);
   } catch (err) {
     console.error('Create review error:', err);
@@ -831,7 +833,7 @@ app.put('/api/reviews/:id', requireAuth, requireAdmin, async (req, res) => {
       updatedAt: new Date()
     }, { new: true, runValidators: true });
     if (!review) return res.status(404).json({ error: 'Review not found' });
-    await new Activity({ action: 'Review Updated', details: `Review from ${author} was updated` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'Review Updated', details: `Review from ${author} was updated` }).save();
     res.json(review);
   } catch (err) {
     console.error('Update review error:', err);
@@ -843,7 +845,7 @@ app.delete('/api/reviews/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const review = await Review.findByIdAndDelete(req.params.id);
     if (!review) return res.status(404).json({ error: 'Review not found' });
-    await new Activity({ action: 'Review Deleted', details: `Review from ${review.author} was deleted` }).save();
+    await new Activity({ actor: req.user?.email || '', action: 'Review Deleted', details: `Review from ${review.author} was deleted` }).save();
     res.json({ message: 'Review deleted' });
   } catch (err) {
     console.error('Delete review error:', err);

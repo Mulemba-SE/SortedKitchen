@@ -421,7 +421,7 @@ function AdminDashboard({ onLogout }) {
     const query = activitySearchTerm.trim().toLowerCase();
     const action = item.action || 'Other';
     if (activityActionFilter !== 'all' && action !== activityActionFilter) return false;
-    return !query || [item.user, item.action, item.target, item.details]
+    return !query || [item.actor, item.user, item.action, item.target, item.details]
       .some((value) => String(value || '').toLowerCase().includes(query));
   });
   const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / ACTIVITIES_PER_PAGE));
@@ -1993,7 +1993,7 @@ function AdminDashboard({ onLogout }) {
                   ) : (
                     pagedActivities.map((item) => (
                       <div key={item._id || `${item.action}-${item.timestamp}`} className="activity-item">
-                        <span className="activity-action">{item.user || 'Chef Admin'} {item.action || 'updated dashboard'}</span>
+                        <span className="activity-action">{item.actor || item.user || 'Actor not recorded'} · {item.action || 'updated dashboard'}</span>
                         <span className="activity-details">{item.target || item.details || 'System update'}</span>
                         <span className="activity-time">{item.timestamp ? new Date(item.timestamp).toLocaleString() : '--'}</span>
                       </div>
