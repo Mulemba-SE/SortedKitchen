@@ -10,6 +10,8 @@ function AdminDashboard({ onLogout }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [expandedClientKey, setExpandedClientKey] = useState(null);
+  const [messageSearchTerm, setMessageSearchTerm] = useState('');
+  const [messageStatusFilter, setMessageStatusFilter] = useState('all');
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
@@ -352,6 +354,18 @@ function AdminDashboard({ onLogout }) {
   const totalBookings = bookings.length;
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
   const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
+  const messageBookings = bookings
+    .filter((booking) => {
+      const status = booking.status || 'pending';
+      if (messageStatusFilter !== 'all' && status !== messageStatusFilter) return false;
+      const query = messageSearchTerm.trim().toLowerCase();
+      return !query || [booking.name, booking.email, booking.phone, booking.occasion, booking.eventDetails]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+    })
+    .sort((a, b) => {
+      const statusOrder = (a.status || 'pending') === (b.status || 'pending') ? 0 : (a.status || 'pending') === 'pending' ? -1 : 1;
+      return statusOrder || new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date);
+    });
   const upcomingEvents = filteredBookings.slice(0, 3);
   const clients = [...bookings.reduce((groups, booking) => {
     const email = String(booking.email || '').trim().toLowerCase();
@@ -738,7 +752,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">K</span>
               <span className="admin-nav-label">Calendar</span>
             </a>
-            <a href="#status" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#messages" className="admin-nav-link" onClick={() => { setActiveMainSection('messages'); setSidebarOpen(false); }}>
               <span className="admin-nav-icon">X</span>
               <span className="admin-nav-label">Messages</span>
             </a>
@@ -831,6 +845,15 @@ function AdminDashboard({ onLogout }) {
                   onClick={() => setActiveMainSection('status')}
                 >
                   Admin Status
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMainSection === 'messages'}
+                  className={`admin-main-tab ${activeMainSection === 'messages' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('messages')}
+                >
+                  Messages
                 </button>
                 <button
                   type="button"
@@ -1184,6 +1207,93 @@ function AdminDashboard({ onLogout }) {
                   })
                 )}
               </section>
+              )}
+
+              {activeMainSection === 'messages' && (
+                <section className="message-inbox panel" id="messages">
+                  <div className="panel-head">
+                    <h5>Booking Inquiries</h5>
+                    <span>{messageBookings.length} result{messageBookings.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="message-inbox-filters">
+                    <input
+                      type="search"
+                      className="search-input"
+                      placeholder="Search client, contact, or event notes..."
+                      aria-label="Search booking inquiries"
+                      value={messageSearchTerm}
+                      onChange={(event) => setMessageSearchTerm(event.target.value)}
+                    />
+                    <select
+                      className="sort-select"
+                      aria-label="Filter inquiries by status"
+                      value={messageStatusFilter}
+                      onChange={(event) => setMessageStatusFilter(event.target.value)}
+                    >
+                      <option value="all">All statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="approved">Approved</option>
+                    </select>
+                  </div>
+                  {isLoading ? (
+                    <LoadingSpinner />
+                  ) : messageBookings.length === 0 ? (
+                    <p className="helper-text">No booking inquiries match these filters.</p>
+                  ) : (
+                    <div className="message-inbox-list">
+                      {messageBookings.map((booking) => {
+                        const subject = `Your ${booking.occasion || 'event'} booking inquiry`;
+                        const body = [
+                          `Hello ${booking.name || 'there'},`,
+                          '',
+                          `I am following up about your event on ${booking.date || 'the requested date'} at ${booking.time || 'the requested time'}.`,
+                          booking.eventDetails ? `Your notes: ${booking.eventDetails}` : '',
+                          '',
+                          'Regards'
+                        ].filter(Boolean).join('\n');
+                        return (
+                          <article className="message-inquiry" key={booking._id}>
+                            <div className="message-inquiry-header">
+                              <div className="message-inquiry-client">
+                                <strong>{booking.name || 'Client'}</strong>
+                                <span>{booking.email || 'No email provided'}{booking.phone ? ` · ${booking.phone}` : ''}</span>
+                              </div>
+                              <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
+                                {booking.status === 'approved' ? 'Approved' : 'Pending'}
+                              </span>
+                            </div>
+                            <div className="message-inquiry-meta">
+                              <span>{booking.occasion || 'Event'} · {booking.date || 'Date not set'} · {booking.time || 'Time not set'}</span>
+                              <span>{booking.guests || '?'} guests</span>
+                            </div>
+                            <p className="message-inquiry-notes">
+                              {booking.eventDetails || 'No additional event notes were included.'}
+                            </p>
+                            <div className="message-inquiry-actions">
+                              {booking.email && (
+                                <a className="btn-secondary" href={`mailto:${booking.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}>
+                                  Reply by email
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => {
+                                  setSearchTerm('');
+                                  setBookingStatusFilter('all');
+                                  setActiveMainSection('bookings');
+                                  setExpandedBookingId(booking._id);
+                                }}
+                              >
+                                Open booking
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               )}
 
               {activeMainSection === 'activity' && (

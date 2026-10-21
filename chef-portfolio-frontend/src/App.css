@@ -9305,7 +9305,7 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
 }
 
 :root body .admin-dashboard .admin-main-section-tabs {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 :root body .admin-dashboard .calendar-controls {
@@ -9493,6 +9493,75 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   cursor: pointer;
 }
 
+:root body .admin-dashboard .message-inbox-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, auto);
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+:root body .admin-dashboard .message-inquiry {
+  margin-bottom: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+:root body .admin-dashboard .message-inquiry-header,
+:root body .admin-dashboard .message-inquiry-meta,
+:root body .admin-dashboard .message-inquiry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+:root body .admin-dashboard .message-inquiry-client {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+:root body .admin-dashboard .message-inquiry-client strong {
+  overflow-wrap: anywhere;
+  color: #f4f7ff;
+}
+
+:root body .admin-dashboard .message-inquiry-client span,
+:root body .admin-dashboard .message-inquiry-meta {
+  overflow-wrap: anywhere;
+  color: var(--secondary-text);
+  font-size: 0.82rem;
+}
+
+:root body .admin-dashboard .message-inquiry-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 0.65rem;
+}
+
+:root body .admin-dashboard .message-inquiry-notes {
+  margin: 0.75rem 0;
+  padding: 0.65rem;
+  border-left: 2px solid rgba(244, 212, 138, 0.65);
+  background: rgba(8, 11, 24, 0.35);
+  color: #e8ecfb;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+:root body .admin-dashboard .message-inquiry-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+:root body .admin-dashboard .message-inquiry-actions a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 @media (max-width: 700px) {
   :root body .admin-dashboard .admin-main-section-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9540,5 +9609,13 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   :root body .admin-dashboard .client-history-event .booking-status-pill {
     grid-column: 2;
     grid-row: 1 / span 2;
+  }
+
+  :root body .admin-dashboard .message-inbox-filters {
+    grid-template-columns: 1fr;
+  }
+
+  :root body .admin-dashboard .message-inquiry-header {
+    align-items: flex-start;
   }
 }
