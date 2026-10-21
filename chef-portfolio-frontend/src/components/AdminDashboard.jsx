@@ -375,6 +375,11 @@ function AdminDashboard({ onLogout }) {
   const totalBookings = bookings.length;
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
   const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const upcomingBookings = bookings
+    .filter((booking) => /^\d{4}-\d{2}-\d{2}$/.test(booking.date || '') && booking.date >= todayKey)
+    .sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
   const messageBookings = bookings
     .filter((booking) => {
       const status = booking.status || 'pending';
@@ -387,7 +392,6 @@ function AdminDashboard({ onLogout }) {
       const statusOrder = (a.status || 'pending') === (b.status || 'pending') ? 0 : (a.status || 'pending') === 'pending' ? -1 : 1;
       return statusOrder || new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date);
     });
-  const upcomingEvents = filteredBookings.slice(0, 3);
   const clients = [...bookings.reduce((groups, booking) => {
     const email = String(booking.email || '').trim().toLowerCase();
     const name = String(booking.name || '').trim().toLowerCase();
@@ -437,6 +441,28 @@ function AdminDashboard({ onLogout }) {
     const today = new Date();
     setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedCalendarDate(formatCalendarDate(today.getFullYear(), today.getMonth(), today.getDate()));
+  };
+
+  const openOverviewSection = (section) => {
+    if (section === 'upcoming') {
+      const nextBooking = upcomingBookings[0];
+      if (nextBooking) {
+        const [year, month] = nextBooking.date.split('-').map(Number);
+        setCalendarMonth(new Date(year, month - 1, 1));
+        setSelectedCalendarDate(nextBooking.date);
+      } else {
+        showCurrentCalendarMonth();
+      }
+      setActiveMainSection('calendar');
+      return;
+    }
+    if (section === 'pending') {
+      setMessageStatusFilter('pending');
+      setMessageSearchTerm('');
+      setActiveMainSection('messages');
+      return;
+    }
+    setActiveMainSection(section);
   };
 
   useEffect(() => {
@@ -912,26 +938,26 @@ function AdminDashboard({ onLogout }) {
             </div>
           )}
           <div className="stats-container" id="overview">
-            <div className="stat-card">
-              <h5>New Bookings</h5>
+            <button type="button" className="stat-card" onClick={() => openOverviewSection('bookings')}>
+              <h5>All Bookings</h5>
               <p>{totalBookings}</p>
               <span className="stat-link">View all</span>
-            </div>
-            <div className="stat-card">
+            </button>
+            <button type="button" className="stat-card" onClick={() => openOverviewSection('upcoming')}>
               <h5>Upcoming Events</h5>
-              <p>{upcomingEvents.length}</p>
-              <span className="stat-link">View all</span>
-            </div>
-            <div className="stat-card">
+              <p>{upcomingBookings.length}</p>
+              <span className="stat-link">View calendar</span>
+            </button>
+            <button type="button" className="stat-card" onClick={() => openOverviewSection('clients')}>
               <h5>Total Clients</h5>
               <p>{totalClients}</p>
               <span className="stat-link">View all</span>
-            </div>
-            <div className="stat-card">
+            </button>
+            <button type="button" className="stat-card" onClick={() => openOverviewSection('pending')}>
               <h5>Pending Inquiries</h5>
               <p>{pendingInquiries}</p>
-              <span className="stat-link">View all</span>
-            </div>
+              <span className="stat-link">Review pending</span>
+            </button>
           </div>
 
           <div className="admin-workspace">

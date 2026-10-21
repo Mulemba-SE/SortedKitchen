@@ -5972,6 +5972,19 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   color: #ffb246;
 }
 
+:root body .admin-dashboard button.stat-card {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard button.stat-card:focus-visible {
+  outline: 2px solid #f4d48a;
+  outline-offset: 3px;
+}
+
 :root body .admin-dashboard .stat-link {
   color: #b9c0dd;
   font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif !important;
