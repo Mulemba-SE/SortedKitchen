@@ -8,6 +8,8 @@ function AdminDashboard({ onLogout }) {
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [expandedClientKey, setExpandedClientKey] = useState(null);
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
@@ -351,6 +353,27 @@ function AdminDashboard({ onLogout }) {
   const totalClients = new Set(bookings.map((booking) => booking.email || booking.name || booking._id)).size;
   const pendingInquiries = bookings.filter((booking) => (booking.status || 'pending') === 'pending').length;
   const upcomingEvents = filteredBookings.slice(0, 3);
+  const clients = [...bookings.reduce((groups, booking) => {
+    const email = String(booking.email || '').trim().toLowerCase();
+    const name = String(booking.name || '').trim().toLowerCase();
+    const key = email || (name ? `name:${name}` : `booking:${booking._id}`);
+    const current = groups.get(key) || { key, name: booking.name || '', email: booking.email || '', bookings: [] };
+    current.bookings.push(booking);
+    if (!current.name && booking.name) current.name = booking.name;
+    if (!current.email && booking.email) current.email = booking.email;
+    groups.set(key, current);
+    return groups;
+  }, new Map()).values()]
+    .map((client) => ({
+      ...client,
+      bookings: client.bookings.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt))
+    }))
+    .filter((client) => {
+      const query = clientSearchTerm.trim().toLowerCase();
+      return !query || [client.name, client.email, ...client.bookings.map((booking) => booking.phone)]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
   const totalMealPages = Math.max(1, Math.ceil(meals.length / MEALS_PER_PAGE));
   const pagedMeals = meals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
   const expandedMeal = pagedMeals.find((meal) => meal._id === expandedMealId) || null;
@@ -703,7 +726,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">B</span>
               <span className="admin-nav-label">Bookings</span>
             </a>
-            <a href="#overview" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#clients" className="admin-nav-link" onClick={() => { setActiveMainSection('clients'); setSidebarOpen(false); }}>
               <span className="admin-nav-icon">C</span>
               <span className="admin-nav-label">Clients</span>
             </a>
@@ -812,6 +835,15 @@ function AdminDashboard({ onLogout }) {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={activeMainSection === 'clients'}
+                  className={`admin-main-tab ${activeMainSection === 'clients' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('clients')}
+                >
+                  Clients
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={activeMainSection === 'calendar'}
                   className={`admin-main-tab ${activeMainSection === 'calendar' ? 'active' : ''}`}
                   onClick={() => setActiveMainSection('calendar')}
@@ -828,6 +860,83 @@ function AdminDashboard({ onLogout }) {
                   Meals
                 </button>
               </div>
+
+              {activeMainSection === 'clients' && (
+                <section className="client-directory panel" id="clients">
+                  <div className="panel-head">
+                    <h5>Client Directory</h5>
+                    <span>{clients.length} client{clients.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="client-directory-toolbar">
+                    <input
+                      type="search"
+                      className="search-input"
+                      placeholder="Search name, email, or phone..."
+                      aria-label="Search clients"
+                      value={clientSearchTerm}
+                      onChange={(event) => setClientSearchTerm(event.target.value)}
+                    />
+                  </div>
+                  {isLoading ? (
+                    <LoadingSpinner />
+                  ) : clients.length === 0 ? (
+                    <p className="helper-text">No clients match this search.</p>
+                  ) : (
+                    <div className="client-directory-list">
+                      {clients.map((client) => {
+                        const isExpanded = expandedClientKey === client.key;
+                        const latestBooking = client.bookings[0];
+                        return (
+                          <article className={`client-record ${isExpanded ? 'expanded' : ''}`} key={client.key}>
+                            <button
+                              type="button"
+                              className="client-record-summary"
+                              aria-expanded={isExpanded}
+                              onClick={() => setExpandedClientKey(isExpanded ? null : client.key)}
+                            >
+                              <span className="client-record-identity">
+                                <strong>{client.name || 'Client'}</strong>
+                                <span>{client.email || latestBooking.phone || 'No contact details'}</span>
+                              </span>
+                              <span className="client-record-last-booking">
+                                <span>Latest event</span>
+                                <strong>{latestBooking.date || 'Date not set'}</strong>
+                              </span>
+                              <span className="client-booking-count">{client.bookings.length} booking{client.bookings.length === 1 ? '' : 's'}</span>
+                              <span className={`booking-chevron ${isExpanded ? 'open' : ''}`} aria-hidden="true">
+                                <span className="booking-chevron-icon"></span>
+                              </span>
+                            </button>
+                            {isExpanded && (
+                              <div className="client-booking-history">
+                                {client.bookings.map((booking) => (
+                                  <button
+                                    type="button"
+                                    className="client-history-event"
+                                    key={booking._id}
+                                    onClick={() => {
+                                      setSearchTerm('');
+                                      setBookingStatusFilter('all');
+                                      setActiveMainSection('bookings');
+                                      setExpandedBookingId(booking._id);
+                                    }}
+                                  >
+                                    <span>{booking.date || 'Date not set'} · {booking.time || 'Time not set'}</span>
+                                    <span>{booking.occasion || 'Event'} · {booking.guests || '?'} guests</span>
+                                    <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
+                                      {booking.status === 'approved' ? 'Approved' : 'Pending'}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
 
               {activeMainSection === 'calendar' && (
                 <section className="admin-calendar panel" id="calendar">
