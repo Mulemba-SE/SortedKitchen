@@ -502,6 +502,10 @@ function AdminDashboard({ onLogout }) {
   const selectedDayBookings = bookings
     .filter((booking) => booking.date === selectedCalendarDate)
     .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const calendarMonthBookings = bookings
+    .filter((booking) => /^\d{4}-\d{2}-\d{2}$/.test(booking.date || '')
+      && booking.date.startsWith(`${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}-`))
+    .sort((a, b) => `${a.date} ${a.time || ''}`.localeCompare(`${b.date} ${b.time || ''}`));
 
   const formatCalendarDate = (year, month, day) => (
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -517,6 +521,60 @@ function AdminDashboard({ onLogout }) {
     const today = new Date();
     setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedCalendarDate(formatCalendarDate(today.getFullYear(), today.getMonth(), today.getDate()));
+  };
+
+  const handleExportCalendar = () => {
+    const escapeIcalText = (value) => String(value ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\r?\n/g, '\\n')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;');
+    const formatDate = (value) => value.replace(/-/g, '');
+    const events = calendarMonthBookings.map((booking) => {
+      const lines = [
+        'BEGIN:VEVENT',
+        `UID:${escapeIcalText(booking._id || `${booking.date}-${booking.name || 'booking'}`)}@sortedkitchen`,
+        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`,
+        `SUMMARY:${escapeIcalText([booking.occasion || 'Booking', booking.name || 'Client'].join(' - '))}`
+      ];
+      const description = [
+        `Client: ${booking.name || 'Client'}`,
+        `Guests: ${booking.guests || 'Not specified'}`,
+        `Status: ${booking.status || 'pending'}`,
+        booking.phone ? `Phone: ${booking.phone}` : '',
+        booking.email ? `Email: ${booking.email}` : '',
+        booking.eventAddress ? `Address: ${booking.eventAddress}` : '',
+        booking.eventDetails ? `Details: ${booking.eventDetails}` : ''
+      ].filter(Boolean).join('\n');
+      lines.push(`DESCRIPTION:${escapeIcalText(description)}`);
+
+      if (/^([01]\d|2[0-3]):[0-5]\d$/.test(booking.time || '')) {
+        const start = new Date(`${booking.date}T${booking.time}:00`);
+        const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+        const formatLocalDateTime = (date) => (
+          `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}00`
+        );
+        lines.push(`DTSTART:${formatLocalDateTime(start)}`, `DTEND:${formatLocalDateTime(end)}`);
+      } else {
+        const nextDay = new Date(`${booking.date}T00:00:00`);
+        nextDay.setDate(nextDay.getDate() + 1);
+        lines.push(
+          `DTSTART;VALUE=DATE:${formatDate(booking.date)}`,
+          `DTEND;VALUE=DATE:${formatDate(formatCalendarDate(nextDay.getFullYear(), nextDay.getMonth(), nextDay.getDate()))}`
+        );
+      }
+      lines.push('END:VEVENT');
+      return lines.join('\r\n');
+    });
+    const content = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sorted Kitchen//Booking Calendar//EN', 'CALSCALE:GREGORIAN', ...events, 'END:VCALENDAR'].join('\r\n');
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/calendar;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sorted-kitchen-${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const openOverviewSection = (section) => {
@@ -1472,6 +1530,14 @@ function AdminDashboard({ onLogout }) {
                         <ChevronRight size={18} aria-hidden="true" />
                       </button>
                       <button type="button" className="btn-secondary" onClick={showCurrentCalendarMonth}>Today</button>
+                      <button
+                        type="button"
+                        className="btn-secondary calendar-export-button"
+                        onClick={handleExportCalendar}
+                        disabled={calendarMonthBookings.length === 0}
+                      >
+                        Export .ics ({calendarMonthBookings.length})
+                      </button>
                     </div>
                   </div>
                   <div className="calendar-weekdays" aria-hidden="true">
