@@ -1904,6 +1904,49 @@ function AdminDashboard({ onLogout }) {
             </div>
 
             <div className="admin-column admin-column-side">
+              {activeMainSection === 'bookings' && (
+                <section className="upcoming-agenda panel" aria-labelledby="upcoming-agenda-title">
+                  <div className="panel-head">
+                    <h5 id="upcoming-agenda-title">Upcoming Events</h5>
+                    <span>{upcomingBookings.length} total</span>
+                  </div>
+                  {upcomingBookings.length === 0 ? (
+                    <p className="helper-text">No upcoming events scheduled.</p>
+                  ) : (
+                    <div className="upcoming-agenda-list">
+                      {upcomingBookings.slice(0, 5).map((booking) => (
+                        <button
+                          type="button"
+                          className="upcoming-agenda-item"
+                          key={booking._id}
+                          onClick={() => {
+                            const [year, month] = booking.date.split('-').map(Number);
+                            setCalendarMonth(new Date(year, month - 1, 1));
+                            setSelectedCalendarDate(booking.date);
+                            setActiveMainSection('calendar');
+                          }}
+                        >
+                          <span className="upcoming-agenda-date">
+                            {new Date(`${booking.date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                          <span className="upcoming-agenda-details">
+                            <strong>{booking.name || 'Client'} · {booking.occasion || 'Event'}</strong>
+                            <span>{booking.time || 'Time not set'} · {booking.guests || '?'} guests</span>
+                          </span>
+                          <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
+                            {booking.status === 'approved' ? 'Approved' : 'Pending'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {upcomingBookings.length > 5 && (
+                    <button type="button" className="upcoming-agenda-more" onClick={() => openOverviewSection('upcoming')}>
+                      View all upcoming dates
+                    </button>
+                  )}
+                </section>
+              )}
               {activeMainSection === 'settings' && (
                 <section className="admin-section panel admin-section-main" id="settings">
                   <div className="panel-head">

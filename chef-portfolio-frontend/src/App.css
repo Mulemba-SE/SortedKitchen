@@ -9515,6 +9515,91 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   cursor: not-allowed;
 }
 
+:root body .admin-dashboard .upcoming-agenda {
+  padding: 1rem;
+}
+
+:root body .admin-dashboard .upcoming-agenda-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+:root body .admin-dashboard .upcoming-agenda-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #e8ecfb;
+  text-align: left;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard .upcoming-agenda-item:hover,
+:root body .admin-dashboard .upcoming-agenda-item:focus-visible {
+  border-color: rgba(244, 212, 138, 0.6);
+  outline: none;
+}
+
+:root body .admin-dashboard .upcoming-agenda-date {
+  color: #f4d48a;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+:root body .admin-dashboard .upcoming-agenda-details {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+:root body .admin-dashboard .upcoming-agenda-details strong,
+:root body .admin-dashboard .upcoming-agenda-details span {
+  overflow-wrap: anywhere;
+}
+
+:root body .admin-dashboard .upcoming-agenda-details strong {
+  color: #f4f7ff;
+  font-size: 0.82rem;
+}
+
+:root body .admin-dashboard .upcoming-agenda-details span {
+  color: var(--secondary-text);
+  font-size: 0.76rem;
+}
+
+:root body .admin-dashboard .upcoming-agenda-more {
+  margin-top: 0.65rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f4d48a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 900px) {
+  :root body .admin-dashboard .upcoming-agenda-item {
+    grid-template-columns: 3rem minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 520px) {
+  :root body .admin-dashboard .upcoming-agenda-item {
+    grid-template-columns: 2.8rem minmax(0, 1fr);
+  }
+
+  :root body .admin-dashboard .upcoming-agenda-item .booking-status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
 :root body .admin-dashboard .client-directory-toolbar {
   margin-bottom: 0.75rem;
 }
