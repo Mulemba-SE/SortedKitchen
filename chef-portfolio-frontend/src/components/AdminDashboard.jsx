@@ -468,6 +468,15 @@ function AdminDashboard({ onLogout }) {
     setActiveMainSection(section);
   };
 
+  const handleSidebarNavigation = (section) => {
+    if (section === 'bookings') {
+      setSearchTerm('');
+      setBookingStatusFilter('all');
+    }
+    setActiveMainSection(section);
+    setSidebarOpen(false);
+  };
+
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
       setMealPage(Math.max(0, totalMealPages - 1));
@@ -916,11 +925,11 @@ function AdminDashboard({ onLogout }) {
             <p>Bookings, meals, clients, and settings.</p>
           </div>
           <nav className="admin-nav">
-            <a href="#overview" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#overview" className="admin-nav-link" onClick={() => handleSidebarNavigation('bookings')}>
               <span className="admin-nav-icon">D</span>
               <span className="admin-nav-label">Dashboard</span>
             </a>
-            <a href="#bookings" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#bookings" className="admin-nav-link" onClick={() => handleSidebarNavigation('bookings')}>
               <span className="admin-nav-icon">B</span>
               <span className="admin-nav-label">Bookings</span>
             </a>
@@ -928,7 +937,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">C</span>
               <span className="admin-nav-label">Clients</span>
             </a>
-            <a href="#meals" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#meals" className="admin-nav-link" onClick={() => handleSidebarNavigation('meals')}>
               <span className="admin-nav-icon">M</span>
               <span className="admin-nav-label">Menus and Recipes</span>
             </a>
