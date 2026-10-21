@@ -9303,3 +9303,139 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
     transform: translateX(0);
   }
 }
+
+:root body .admin-dashboard .admin-main-section-tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+:root body .admin-dashboard .calendar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+:root body .admin-dashboard .calendar-controls strong {
+  min-width: 9rem;
+  text-align: center;
+}
+
+:root body .admin-dashboard .calendar-icon-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(244, 212, 138, 0.35);
+  border-radius: 8px;
+  background: rgba(8, 11, 24, 0.55);
+  color: #f4d48a;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard .calendar-weekdays,
+:root body .admin-dashboard .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+:root body .admin-dashboard .calendar-weekdays {
+  margin: 1rem 0 0.4rem;
+  color: var(--secondary-text);
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+:root body .admin-dashboard .calendar-day,
+:root body .admin-dashboard .calendar-empty-day {
+  aspect-ratio: 1.35;
+  min-width: 0;
+}
+
+:root body .admin-dashboard .calendar-day {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(8, 11, 24, 0.55);
+  color: #e8ecfb;
+  text-align: left;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard .calendar-day:hover,
+:root body .admin-dashboard .calendar-day.today {
+  border-color: rgba(244, 212, 138, 0.7);
+}
+
+:root body .admin-dashboard .calendar-day.selected {
+  background: rgba(244, 212, 138, 0.14);
+  border-color: #f4d48a;
+}
+
+:root body .admin-dashboard .calendar-booking-count {
+  display: grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: #f4d48a;
+  color: #182025;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+:root body .admin-dashboard .calendar-day-events {
+  margin-top: 1.25rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+:root body .admin-dashboard .calendar-event {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #e8ecfb;
+  text-align: left;
+  cursor: pointer;
+}
+
+:root body .admin-dashboard .calendar-event-time {
+  color: #f4d48a;
+}
+
+@media (max-width: 700px) {
+  :root body .admin-dashboard .admin-main-section-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :root body .admin-dashboard .calendar-controls {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  :root body .admin-dashboard .calendar-controls strong {
+    min-width: 7rem;
+  }
+
+  :root body .admin-dashboard .calendar-day {
+    padding: 0.35rem;
+  }
+
+  :root body .admin-dashboard .calendar-event {
+    grid-template-columns: 1fr auto;
+  }
+
+  :root body .admin-dashboard .calendar-event-time {
+    grid-column: 1 / -1;
+  }
+}

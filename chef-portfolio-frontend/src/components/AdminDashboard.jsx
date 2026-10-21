@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 
 function AdminDashboard({ onLogout }) {
@@ -27,6 +28,14 @@ function AdminDashboard({ onLogout }) {
   const [expandedMealId, setExpandedMealId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeMainSection, setActiveMainSection] = useState('bookings');
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  });
   const [approvingBookingId, setApprovingBookingId] = useState(null);
   const [editingBookingId, setEditingBookingId] = useState(null);
   const [bookingForm, setBookingForm] = useState(null);
@@ -345,6 +354,32 @@ function AdminDashboard({ onLogout }) {
   const totalMealPages = Math.max(1, Math.ceil(meals.length / MEALS_PER_PAGE));
   const pagedMeals = meals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
   const expandedMeal = pagedMeals.find((meal) => meal._id === expandedMealId) || null;
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthIndex = calendarMonth.getMonth();
+  const calendarMonthLabel = calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const calendarCells = [
+    ...Array(new Date(calendarYear, calendarMonthIndex, 1).getDay()).fill(null),
+    ...Array.from({ length: new Date(calendarYear, calendarMonthIndex + 1, 0).getDate() }, (_, index) => index + 1)
+  ];
+  const selectedDayBookings = bookings
+    .filter((booking) => booking.date === selectedCalendarDate)
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+
+  const formatCalendarDate = (year, month, day) => (
+    `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  );
+
+  const changeCalendarMonth = (offset) => {
+    const nextMonth = new Date(calendarYear, calendarMonthIndex + offset, 1);
+    setCalendarMonth(nextMonth);
+    setSelectedCalendarDate(formatCalendarDate(nextMonth.getFullYear(), nextMonth.getMonth(), 1));
+  };
+
+  const showCurrentCalendarMonth = () => {
+    const today = new Date();
+    setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    setSelectedCalendarDate(formatCalendarDate(today.getFullYear(), today.getMonth(), today.getDate()));
+  };
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -676,7 +711,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">M</span>
               <span className="admin-nav-label">Menus and Recipes</span>
             </a>
-            <a href="#overview" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#calendar" className="admin-nav-link" onClick={() => { setActiveMainSection('calendar'); setSidebarOpen(false); }}>
               <span className="admin-nav-icon">K</span>
               <span className="admin-nav-label">Calendar</span>
             </a>
@@ -777,6 +812,15 @@ function AdminDashboard({ onLogout }) {
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={activeMainSection === 'calendar'}
+                  className={`admin-main-tab ${activeMainSection === 'calendar' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('calendar')}
+                >
+                  Calendar
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={activeMainSection === 'meals'}
                   className={`admin-main-tab ${activeMainSection === 'meals' ? 'active' : ''}`}
                   onClick={() => setActiveMainSection('meals')}
@@ -784,6 +828,76 @@ function AdminDashboard({ onLogout }) {
                   Meals
                 </button>
               </div>
+
+              {activeMainSection === 'calendar' && (
+                <section className="admin-calendar panel" id="calendar">
+                  <div className="panel-head">
+                    <h5>Booking Calendar</h5>
+                    <div className="calendar-controls">
+                      <button type="button" className="calendar-icon-button" aria-label="Previous month" onClick={() => changeCalendarMonth(-1)}>
+                        <ChevronLeft size={18} aria-hidden="true" />
+                      </button>
+                      <strong aria-live="polite">{calendarMonthLabel}</strong>
+                      <button type="button" className="calendar-icon-button" aria-label="Next month" onClick={() => changeCalendarMonth(1)}>
+                        <ChevronRight size={18} aria-hidden="true" />
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={showCurrentCalendarMonth}>Today</button>
+                    </div>
+                  </div>
+                  <div className="calendar-weekdays" aria-hidden="true">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
+                  </div>
+                  <div className="calendar-grid" role="grid" aria-label={calendarMonthLabel}>
+                    {calendarCells.map((day, index) => {
+                      if (!day) return <span className="calendar-empty-day" key={`empty-${index}`} aria-hidden="true" />;
+                      const dateKey = formatCalendarDate(calendarYear, calendarMonthIndex, day);
+                      const dayBookings = bookings.filter((booking) => booking.date === dateKey);
+                      const isToday = dateKey === formatCalendarDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+                      return (
+                        <button
+                          type="button"
+                          role="gridcell"
+                          key={dateKey}
+                          className={`calendar-day ${dateKey === selectedCalendarDate ? 'selected' : ''} ${isToday ? 'today' : ''} ${dayBookings.length ? 'has-bookings' : ''}`}
+                          aria-label={`${calendarMonthLabel} ${day}${dayBookings.length ? `, ${dayBookings.length} booking${dayBookings.length === 1 ? '' : 's'}` : ''}`}
+                          aria-pressed={dateKey === selectedCalendarDate}
+                          onClick={() => setSelectedCalendarDate(dateKey)}
+                        >
+                          <span>{day}</span>
+                          {dayBookings.length > 0 && <span className="calendar-booking-count">{dayBookings.length}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="calendar-day-events">
+                    <div className="panel-head">
+                      <h5>{new Date(`${selectedCalendarDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h5>
+                      <span>{selectedDayBookings.length} booking{selectedDayBookings.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {selectedDayBookings.length === 0 ? (
+                      <p className="helper-text">No bookings for this date.</p>
+                    ) : selectedDayBookings.map((booking) => (
+                      <button
+                        type="button"
+                        className="calendar-event"
+                        key={booking._id}
+                        onClick={() => {
+                          setSearchTerm('');
+                          setBookingStatusFilter('all');
+                          setActiveMainSection('bookings');
+                          setExpandedBookingId(booking._id);
+                        }}
+                      >
+                        <span className="calendar-event-time">{booking.time || 'Time not set'}</span>
+                        <span className="calendar-event-name">{booking.name || 'Client'} · {booking.guests || '?'} guests</span>
+                        <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
+                          {booking.status === 'approved' ? 'Approved' : 'Pending'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {activeMainSection === 'bookings' && (
               <section className="booking-list panel" id="bookings">
