@@ -32,6 +32,8 @@ function AdminDashboard({ onLogout }) {
   const [showModal, setShowModal] = useState(false);
   const [bookingToDelete, setBookingToDelete] = useState(null);
   const [meals, setMeals] = useState([]);
+  const [mealSearchTerm, setMealSearchTerm] = useState('');
+  const [mealCategoryFilter, setMealCategoryFilter] = useState('all');
   const [reviews, setReviews] = useState([]);
   const [reviewSearchTerm, setReviewSearchTerm] = useState('');
   const [reviewVisibilityFilter, setReviewVisibilityFilter] = useState('all');
@@ -455,8 +457,16 @@ function AdminDashboard({ onLogout }) {
     .sort((a, b) => a.name.localeCompare(b.name));
   const totalClientPages = Math.max(1, Math.ceil(clients.length / CLIENTS_PER_PAGE));
   const pagedClients = clients.slice(clientPage * CLIENTS_PER_PAGE, (clientPage + 1) * CLIENTS_PER_PAGE);
-  const totalMealPages = Math.max(1, Math.ceil(meals.length / MEALS_PER_PAGE));
-  const pagedMeals = meals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
+  const mealCategories = [...new Set(meals.map((meal) => String(meal.category || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  const filteredMeals = meals.filter((meal) => {
+    if (mealCategoryFilter !== 'all' && meal.category !== mealCategoryFilter) return false;
+    const query = mealSearchTerm.trim().toLowerCase();
+    return !query || [meal.title, meal.category, meal.description]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
+  const totalMealPages = Math.max(1, Math.ceil(filteredMeals.length / MEALS_PER_PAGE));
+  const pagedMeals = filteredMeals.slice(mealPage * MEALS_PER_PAGE, (mealPage + 1) * MEALS_PER_PAGE);
   const expandedMeal = pagedMeals.find((meal) => meal._id === expandedMealId) || null;
   const calendarYear = calendarMonth.getFullYear();
   const calendarMonthIndex = calendarMonth.getMonth();
@@ -2003,6 +2013,30 @@ function AdminDashboard({ onLogout }) {
                 </div>
               </form>
 
+              <div className="meal-manager-filters">
+                <input
+                  type="search"
+                  className="search-input"
+                  placeholder="Search meals..."
+                  aria-label="Search meals"
+                  value={mealSearchTerm}
+                  onChange={(event) => { setMealSearchTerm(event.target.value); setMealPage(0); }}
+                />
+                <select
+                  className="sort-select"
+                  aria-label="Filter meals by category"
+                  value={mealCategoryFilter}
+                  onChange={(event) => { setMealCategoryFilter(event.target.value); setMealPage(0); }}
+                >
+                  <option value="all">All categories</option>
+                  {mealCategories.map((category) => <option value={category} key={category}>{formatCategoryLabel(category)}</option>)}
+                </select>
+                <span className="meal-manager-count">{filteredMeals.length} meal{filteredMeals.length === 1 ? '' : 's'}</span>
+              </div>
+
+              {filteredMeals.length === 0 ? (
+                <p className="helper-text">{meals.length ? 'No meals match these filters.' : 'No meals have been added yet.'}</p>
+              ) : (
               <div className="meal-tile-grid">
                 {pagedMeals.map((meal) => (
                   <div
@@ -2053,8 +2087,9 @@ function AdminDashboard({ onLogout }) {
                   </div>
                 ))}
               </div>
+              )}
 
-              <div className="meal-pagination" aria-label="Meals pagination">
+              {filteredMeals.length > MEALS_PER_PAGE && <div className="meal-pagination" aria-label="Meals pagination">
                 <button
                   type="button"
                   className="meal-page-btn"
@@ -2076,7 +2111,7 @@ function AdminDashboard({ onLogout }) {
                 >
                   &#8594;
                 </button>
-              </div>
+              </div>}
             </div>
             )}
 

@@ -9687,6 +9687,25 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   width: 100%;
 }
 
+:root body .admin-dashboard .meal-manager-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, auto) auto;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+:root body .admin-dashboard .meal-manager-filters .search-input,
+:root body .admin-dashboard .meal-manager-filters .sort-select {
+  width: 100%;
+}
+
+:root body .admin-dashboard .meal-manager-count {
+  color: var(--secondary-text);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 :root body .admin-dashboard .review-editor label {
   display: grid;
   gap: 0.35rem;
@@ -9799,6 +9818,14 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
 
   :root body .admin-dashboard .review-manager-filters {
     grid-template-columns: 1fr;
+  }
+
+  :root body .admin-dashboard .meal-manager-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  }
+
+  :root body .admin-dashboard .meal-manager-count {
+    grid-column: 1 / -1;
   }
 
   :root body .admin-dashboard .activity-filters {
