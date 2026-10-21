@@ -9393,6 +9393,18 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
   text-align: center;
 }
 
+:root body .admin-dashboard .calendar-month-picker {
+  min-height: 34px;
+  max-width: 10rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(244, 212, 138, 0.35);
+  border-radius: 8px;
+  background: rgba(8, 11, 24, 0.8);
+  color: #e8ecfb;
+  color-scheme: dark;
+  font: inherit;
+}
+
 :root body .admin-dashboard .calendar-icon-button {
   display: grid;
   place-items: center;
@@ -9943,6 +9955,10 @@ h2.showcase-welcome-title:is(#_heading-lock, *) {
 
   :root body .admin-dashboard .calendar-controls strong {
     min-width: 7rem;
+  }
+
+  :root body .admin-dashboard .calendar-month-picker {
+    max-width: 100%;
   }
 
   :root body .admin-dashboard .calendar-day {

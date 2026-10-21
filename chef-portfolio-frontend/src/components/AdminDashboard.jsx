@@ -511,6 +511,14 @@ function AdminDashboard({ onLogout }) {
     `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   );
 
+  const handleCalendarMonthChange = (event) => {
+    const [year, month] = event.target.value.split('-').map(Number);
+    if (!year || !month) return;
+    const nextMonth = new Date(year, month - 1, 1);
+    setCalendarMonth(nextMonth);
+    setSelectedCalendarDate(formatCalendarDate(year, month - 1, 1));
+  };
+
   const changeCalendarMonth = (offset) => {
     const nextMonth = new Date(calendarYear, calendarMonthIndex + offset, 1);
     setCalendarMonth(nextMonth);
@@ -1529,6 +1537,13 @@ function AdminDashboard({ onLogout }) {
                       <button type="button" className="calendar-icon-button" aria-label="Next month" onClick={() => changeCalendarMonth(1)}>
                         <ChevronRight size={18} aria-hidden="true" />
                       </button>
+                      <input
+                        type="month"
+                        className="calendar-month-picker"
+                        aria-label="Choose calendar month"
+                        value={`${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}`}
+                        onChange={handleCalendarMonthChange}
+                      />
                       <button type="button" className="btn-secondary" onClick={showCurrentCalendarMonth}>Today</button>
                       <button
                         type="button"
