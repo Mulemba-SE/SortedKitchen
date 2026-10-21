@@ -8,6 +8,7 @@ function AdminDashboard({ onLogout }) {
   const BOOKINGS_PER_PAGE = 10;
   const CLIENTS_PER_PAGE = 10;
   const REVIEWS_PER_PAGE = 10;
+  const MESSAGES_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
@@ -18,6 +19,7 @@ function AdminDashboard({ onLogout }) {
   const [expandedClientKey, setExpandedClientKey] = useState(null);
   const [messageSearchTerm, setMessageSearchTerm] = useState('');
   const [messageStatusFilter, setMessageStatusFilter] = useState('all');
+  const [messagePage, setMessagePage] = useState(0);
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [bookingPage, setBookingPage] = useState(0);
   const [sortOption, setSortOption] = useState('newest');
@@ -424,6 +426,8 @@ function AdminDashboard({ onLogout }) {
       const statusOrder = (a.status || 'pending') === (b.status || 'pending') ? 0 : (a.status || 'pending') === 'pending' ? -1 : 1;
       return statusOrder || new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date);
     });
+  const totalMessagePages = Math.max(1, Math.ceil(messageBookings.length / MESSAGES_PER_PAGE));
+  const pagedMessageBookings = messageBookings.slice(messagePage * MESSAGES_PER_PAGE, (messagePage + 1) * MESSAGES_PER_PAGE);
   const clients = [...bookings.reduce((groups, booking) => {
     const email = String(booking.email || '').trim().toLowerCase();
     const name = String(booking.name || '').trim().toLowerCase();
@@ -493,6 +497,7 @@ function AdminDashboard({ onLogout }) {
     if (section === 'pending') {
       setMessageStatusFilter('pending');
       setMessageSearchTerm('');
+      setMessagePage(0);
       setActiveMainSection('messages');
       return;
     }
@@ -527,6 +532,12 @@ function AdminDashboard({ onLogout }) {
       setReviewPage(Math.max(0, totalReviewPages - 1));
     }
   }, [reviewPage, totalReviewPages]);
+
+  useEffect(() => {
+    if (messagePage > totalMessagePages - 1) {
+      setMessagePage(Math.max(0, totalMessagePages - 1));
+    }
+  }, [messagePage, totalMessagePages]);
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -1680,13 +1691,13 @@ function AdminDashboard({ onLogout }) {
                       placeholder="Search client, contact, or event notes..."
                       aria-label="Search booking inquiries"
                       value={messageSearchTerm}
-                      onChange={(event) => setMessageSearchTerm(event.target.value)}
+                      onChange={(event) => { setMessageSearchTerm(event.target.value); setMessagePage(0); }}
                     />
                     <select
                       className="sort-select"
                       aria-label="Filter inquiries by status"
                       value={messageStatusFilter}
-                      onChange={(event) => setMessageStatusFilter(event.target.value)}
+                      onChange={(event) => { setMessageStatusFilter(event.target.value); setMessagePage(0); }}
                     >
                       <option value="all">All statuses</option>
                       <option value="pending">Pending</option>
@@ -1699,7 +1710,7 @@ function AdminDashboard({ onLogout }) {
                     <p className="helper-text">No booking inquiries match these filters.</p>
                   ) : (
                     <div className="message-inbox-list">
-                      {messageBookings.map((booking) => {
+                      {pagedMessageBookings.map((booking) => {
                         const subject = `Your ${booking.occasion || 'event'} booking inquiry`;
                         const body = [
                           `Hello ${booking.name || 'there'},`,
@@ -1749,6 +1760,29 @@ function AdminDashboard({ onLogout }) {
                           </article>
                         );
                       })}
+                    </div>
+                  )}
+                  {messageBookings.length > MESSAGES_PER_PAGE && (
+                    <div className="booking-pagination" aria-label="Message inbox pagination">
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setMessagePage((page) => Math.max(0, page - 1))}
+                        disabled={messagePage === 0}
+                        aria-label="Previous message page"
+                      >
+                        <ChevronLeft size={17} aria-hidden="true" />
+                      </button>
+                      <span>Page {messagePage + 1} of {totalMessagePages} · {messageBookings.length} inquiries</span>
+                      <button
+                        type="button"
+                        className="booking-page-button"
+                        onClick={() => setMessagePage((page) => Math.min(totalMessagePages - 1, page + 1))}
+                        disabled={messagePage >= totalMessagePages - 1}
+                        aria-label="Next message page"
+                      >
+                        <ChevronRight size={17} aria-hidden="true" />
+                      </button>
                     </div>
                   )}
                 </section>
