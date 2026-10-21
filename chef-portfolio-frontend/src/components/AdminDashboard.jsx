@@ -5,6 +5,7 @@ import LoadingSpinner from './LoadingSpinner';
 
 function AdminDashboard({ onLogout }) {
   const MEALS_PER_PAGE = 10;
+  const BOOKINGS_PER_PAGE = 10;
   const [bookings, setBookings] = useState([]);
   const [activities, setActivities] = useState([]);
   const [activitySearchTerm, setActivitySearchTerm] = useState('');
@@ -15,6 +16,7 @@ function AdminDashboard({ onLogout }) {
   const [messageSearchTerm, setMessageSearchTerm] = useState('');
   const [messageStatusFilter, setMessageStatusFilter] = useState('all');
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
+  const [bookingPage, setBookingPage] = useState(0);
   const [sortOption, setSortOption] = useState('newest');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -376,6 +378,8 @@ function AdminDashboard({ onLogout }) {
     }
     return 0;
   });
+  const totalBookingPages = Math.max(1, Math.ceil(filteredBookings.length / BOOKINGS_PER_PAGE));
+  const pagedBookings = filteredBookings.slice(bookingPage * BOOKINGS_PER_PAGE, (bookingPage + 1) * BOOKINGS_PER_PAGE);
 
   const totalBookings = bookings.length;
   const activityActions = [...new Set(activities.map((item) => item.action || 'Other'))].sort();
@@ -482,10 +486,17 @@ function AdminDashboard({ onLogout }) {
     if (section === 'bookings') {
       setSearchTerm('');
       setBookingStatusFilter('all');
+      setBookingPage(0);
     }
     setActiveMainSection(section);
     setSidebarOpen(false);
   };
+
+  useEffect(() => {
+    if (bookingPage > totalBookingPages - 1) {
+      setBookingPage(Math.max(0, totalBookingPages - 1));
+    }
+  }, [bookingPage, totalBookingPages]);
 
   useEffect(() => {
     if (mealPage > totalMealPages - 1) {
@@ -1372,13 +1383,13 @@ function AdminDashboard({ onLogout }) {
                     type="text"
                     placeholder="Search by name or email..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => { setSearchTerm(e.target.value); setBookingPage(0); }}
                     className="search-input"
                   />
                   <select
                     aria-label="Filter bookings by status"
                     value={bookingStatusFilter}
-                    onChange={(e) => setBookingStatusFilter(e.target.value)}
+                    onChange={(e) => { setBookingStatusFilter(e.target.value); setBookingPage(0); }}
                     className="sort-select"
                   >
                     <option value="all">All statuses</option>
@@ -1387,7 +1398,7 @@ function AdminDashboard({ onLogout }) {
                   </select>
                   <select
                     value={sortOption}
-                    onChange={(e) => setSortOption(e.target.value)}
+                    onChange={(e) => { setSortOption(e.target.value); setBookingPage(0); }}
                     className="sort-select"
                   >
                     <option value="newest">Newest First</option>
@@ -1410,7 +1421,7 @@ function AdminDashboard({ onLogout }) {
                 ) : filteredBookings.length === 0 ? (
                   <p style={{ textAlign: 'center' }}>No bookings found.</p>
                 ) : (
-                  filteredBookings.map(booking => {
+                  pagedBookings.map(booking => {
                     const isOpen = expandedBookingId === booking._id;
                     return (
                       <div key={booking._id} className={`booking-card ${isOpen ? 'open' : ''}`}>
@@ -1532,6 +1543,29 @@ function AdminDashboard({ onLogout }) {
                       </div>
                     );
                   })
+                )}
+                {!isLoading && filteredBookings.length > BOOKINGS_PER_PAGE && (
+                  <div className="booking-pagination" aria-label="Booking list pagination">
+                    <button
+                      type="button"
+                      className="booking-page-button"
+                      onClick={() => setBookingPage((page) => Math.max(0, page - 1))}
+                      disabled={bookingPage === 0}
+                      aria-label="Previous booking page"
+                    >
+                      <ChevronLeft size={17} aria-hidden="true" />
+                    </button>
+                    <span>Page {bookingPage + 1} of {totalBookingPages} · {filteredBookings.length} bookings</span>
+                    <button
+                      type="button"
+                      className="booking-page-button"
+                      onClick={() => setBookingPage((page) => Math.min(totalBookingPages - 1, page + 1))}
+                      disabled={bookingPage >= totalBookingPages - 1}
+                      aria-label="Next booking page"
+                    >
+                      <ChevronRight size={17} aria-hidden="true" />
+                    </button>
+                  </div>
                 )}
               </section>
               )}
