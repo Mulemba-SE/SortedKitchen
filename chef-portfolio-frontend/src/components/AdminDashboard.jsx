@@ -16,6 +16,8 @@ function AdminDashboard({ onLogout }) {
   const [activityActionFilter, setActivityActionFilter] = useState('all');
   const [activityPage, setActivityPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [bookingDateFrom, setBookingDateFrom] = useState('');
+  const [bookingDateTo, setBookingDateTo] = useState('');
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [clientPage, setClientPage] = useState(0);
   const [expandedClientKey, setExpandedClientKey] = useState(null);
@@ -368,12 +370,13 @@ function AdminDashboard({ onLogout }) {
   const filteredBookings = bookings.filter(booking => {
     const status = booking.status || 'pending';
     if (bookingStatusFilter !== 'all' && status !== bookingStatusFilter) return false;
+    if (bookingDateFrom && (!/^\d{4}-\d{2}-\d{2}$/.test(booking.date || '') || booking.date < bookingDateFrom)) return false;
+    if (bookingDateTo && (!/^\d{4}-\d{2}-\d{2}$/.test(booking.date || '') || booking.date > bookingDateTo)) return false;
     const query = searchTerm.trim().toLowerCase();
     if (!query) return true;
     return (
-      booking.name?.toLowerCase().includes(query) ||
-      booking.email?.toLowerCase().includes(query) ||
-      booking.occasion?.toLowerCase().includes(query)
+      [booking.name, booking.email, booking.phone, booking.occasion, booking.eventDetails]
+        .some((value) => String(value || '').toLowerCase().includes(query))
     );
   }).sort((a, b) => {
     if (sortOption === 'newest') {
@@ -513,6 +516,8 @@ function AdminDashboard({ onLogout }) {
     ));
     const bookingIndex = defaultSortedBookings.findIndex((booking) => booking._id === bookingId);
     setSearchTerm('');
+    setBookingDateFrom('');
+    setBookingDateTo('');
     setBookingStatusFilter('all');
     setSortOption('newest');
     setBookingPage(bookingIndex < 0 ? 0 : Math.floor(bookingIndex / BOOKINGS_PER_PAGE));
@@ -628,6 +633,8 @@ function AdminDashboard({ onLogout }) {
   const handleSidebarNavigation = (section) => {
     if (section === 'bookings') {
       setSearchTerm('');
+      setBookingDateFrom('');
+      setBookingDateTo('');
       setBookingStatusFilter('all');
       setBookingPage(0);
     }
@@ -1632,6 +1639,20 @@ function AdminDashboard({ onLogout }) {
                     value={searchTerm}
                     onChange={(e) => { setSearchTerm(e.target.value); setBookingPage(0); }}
                     className="search-input"
+                  />
+                  <input
+                    type="date"
+                    className="sort-select"
+                    aria-label="Bookings from date (inclusive)"
+                    value={bookingDateFrom}
+                    onChange={(event) => { setBookingDateFrom(event.target.value); setBookingPage(0); }}
+                  />
+                  <input
+                    type="date"
+                    className="sort-select"
+                    aria-label="Bookings through date (inclusive)"
+                    value={bookingDateTo}
+                    onChange={(event) => { setBookingDateTo(event.target.value); setBookingPage(0); }}
                   />
                   <select
                     aria-label="Filter bookings by status"
