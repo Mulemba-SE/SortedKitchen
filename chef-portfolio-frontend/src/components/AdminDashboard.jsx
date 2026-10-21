@@ -28,6 +28,7 @@ function AdminDashboard({ onLogout }) {
   const [uploading, setUploading] = useState(false);
   const [bioContent, setBioContent] = useState('');
   const [bioSaving, setBioSaving] = useState(false);
+  const [bioStatus, setBioStatus] = useState(null);
   const [authStatus, setAuthStatus] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [mealPage, setMealPage] = useState(0);
@@ -646,6 +647,7 @@ function AdminDashboard({ onLogout }) {
     e.preventDefault();
     if (!token) return;
     setBioSaving(true);
+    setBioStatus(null);
     try {
       const response = await fetch(`${apiUrl}/api/bio`, {
         method: 'PUT',
@@ -657,10 +659,13 @@ function AdminDashboard({ onLogout }) {
         return;
       }
       if (!response.ok) {
-        alert('Failed to save bio');
+        setBioStatus({ type: 'error', message: 'Failed to save chef bio.' });
+        return;
       }
+      setBioStatus({ type: 'success', message: 'Chef bio saved.' });
     } catch (err) {
       console.error('Error saving bio:', err);
+      setBioStatus({ type: 'error', message: 'Could not connect to save the chef bio.' });
     } finally {
       setBioSaving(false);
     }
@@ -873,7 +878,7 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">R</span>
               <span className="admin-nav-label">Reviews</span>
             </a>
-            <a href="#bio" className="admin-nav-link" onClick={() => setSidebarOpen(false)}>
+            <a href="#settings" className="admin-nav-link" onClick={() => { setActiveMainSection('settings'); setSidebarOpen(false); }}>
               <span className="admin-nav-icon">S</span>
               <span className="admin-nav-label">Settings</span>
             </a>
@@ -994,6 +999,15 @@ function AdminDashboard({ onLogout }) {
                   onClick={() => setActiveMainSection('calendar')}
                 >
                   Calendar
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMainSection === 'settings'}
+                  className={`admin-main-tab ${activeMainSection === 'settings' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('settings')}
+                >
+                  Settings
                 </button>
                 <button
                   type="button"
@@ -1569,6 +1583,29 @@ function AdminDashboard({ onLogout }) {
             </div>
 
             <div className="admin-column admin-column-side">
+              {activeMainSection === 'settings' && (
+                <section className="admin-section panel admin-section-main" id="settings">
+                  <div className="panel-head">
+                    <h5>Site Settings</h5>
+                  </div>
+                  <form className="admin-form" onSubmit={handleBioSave}>
+                    <div className="form-group">
+                      <label htmlFor="admin-chef-bio">Chef bio</label>
+                      <textarea
+                        id="admin-chef-bio"
+                        value={bioContent}
+                        onChange={(event) => { setBioContent(event.target.value); setBioStatus(null); }}
+                        rows="10"
+                        maxLength="10000"
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary" disabled={bioSaving}>
+                      {bioSaving ? 'Saving...' : 'Save bio'}
+                    </button>
+                    {bioStatus && <p className={`helper-text ${bioStatus.type}`} role="status">{bioStatus.message}</p>}
+                  </form>
+                </section>
+              )}
               {activeMainSection === 'meals' && (
               <div className="admin-section panel admin-section-main" id="meals">
               <div className="panel-head">
@@ -1732,21 +1769,6 @@ function AdminDashboard({ onLogout }) {
             </div>
             )}
 
-            <div className="admin-section panel admin-section-main" id="bio">
-              <div className="panel-head">
-                <h5>Bio</h5>
-                <button type="button" className="panel-more" aria-label="More options">...</button>
-              </div>
-              <form className="admin-form" onSubmit={handleBioSave}>
-                <div className="form-group">
-                  <label>Bio Content</label>
-                  <textarea value={bioContent} onChange={(e) => setBioContent(e.target.value)} rows="6"></textarea>
-                </div>
-                <button type="submit" className="btn-primary" disabled={bioSaving}>
-                  {bioSaving ? 'Saving...' : 'Save Bio'}
-                </button>
-              </form>
-            </div>
             </div>
           </div>
         </main>
