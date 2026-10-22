@@ -144,6 +144,31 @@ bookingSchema.index({ 'quote.responseTokenHash': 1 }, { sparse: true });
 
 const Booking = mongoose.model('Booking', bookingSchema);
 
+const mpesaPaymentSchema = new mongoose.Schema({
+  bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  amount: { type: Number, required: true, min: 1 },
+  currency: { type: String, default: 'KES', enum: ['KES'] },
+  depositPercentage: { type: Number, required: true, min: 1, max: 100 },
+  phone: { type: String, required: true },
+  status: { type: String, enum: ['pending', 'completed', 'failed', 'review'], default: 'pending', index: true },
+  checkoutRequestId: { type: String, unique: true, sparse: true },
+  merchantRequestId: String,
+  mpesaReceiptNumber: String,
+  resultCode: Number,
+  resultDescription: String,
+  callbackReceivedAt: Date,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+mpesaPaymentSchema.index({ bookingId: 1, createdAt: -1 });
+mpesaPaymentSchema.index(
+  { bookingId: 1 },
+  { unique: true, partialFilterExpression: { status: 'pending' } }
+);
+
+const MpesaPayment = mongoose.model('MpesaPayment', mpesaPaymentSchema);
+
 const unavailableDateSchema = new mongoose.Schema({
   date: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
   type: { type: String, enum: ['blocked', 'booked'], default: 'blocked' },
@@ -452,6 +477,79 @@ const googleOAuthClient = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
 const frontendUrl = String(FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 const hashQuoteResponseToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const isValidQuoteResponseToken = (token) => /^[a-f0-9]{64}$/.test(String(token || ''));
+const mpesaDepositPercentage = process.env.MPESA_DEPOSIT_PERCENTAGE === undefined
+  ? 30
+  : Number(process.env.MPESA_DEPOSIT_PERCENTAGE);
+const mpesaBaseUrl = process.env.MPESA_ENV === 'production'
+  ? 'https://api.safaricom.co.ke'
+  : 'https://sandbox.safaricom.co.ke';
+const mpesaConfig = {
+  consumerKey: process.env.MPESA_CONSUMER_KEY,
+  consumerSecret: process.env.MPESA_CONSUMER_SECRET,
+  shortCode: process.env.MPESA_SHORTCODE,
+  passkey: process.env.MPESA_PASSKEY,
+  callbackUrl: process.env.MPESA_CALLBACK_URL
+};
+
+const getMpesaConfigurationError = () => {
+  if (!Number.isFinite(mpesaDepositPercentage) || mpesaDepositPercentage < 1 || mpesaDepositPercentage > 100) {
+    return 'MPESA_DEPOSIT_PERCENTAGE must be a number from 1 to 100';
+  }
+  if (process.env.MPESA_ENV && !['sandbox', 'production'].includes(process.env.MPESA_ENV)) {
+    return 'MPESA_ENV must be sandbox or production';
+  }
+  if (!mpesaConfig.consumerKey || !mpesaConfig.consumerSecret || !mpesaConfig.shortCode || !mpesaConfig.passkey || !mpesaConfig.callbackUrl) {
+    return 'M-Pesa is not fully configured on the server';
+  }
+  try {
+    const callbackUrl = new URL(mpesaConfig.callbackUrl);
+    if (callbackUrl.protocol !== 'https:' || callbackUrl.pathname !== '/api/payments/mpesa/callback') {
+      return 'MPESA_CALLBACK_URL must be an HTTPS URL ending in /api/payments/mpesa/callback';
+    }
+  } catch {
+    return 'MPESA_CALLBACK_URL must be a valid HTTPS URL ending in /api/payments/mpesa/callback';
+  }
+  return null;
+};
+
+const normalizeMpesaPhone = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  const normalized = digits.startsWith('0')
+    ? `254${digits.slice(1)}`
+    : digits.startsWith('254')
+      ? digits
+      : digits;
+  return /^254[17]\d{8}$/.test(normalized) ? normalized : null;
+};
+
+const getBookingMpesaDeposit = (booking) => {
+  const packageTotal = Number(booking.selectedPackage?.totalPrice);
+  const eligible = booking.status === 'approved'
+    && booking.selectedPackage?.currency === 'KES'
+    && Number.isFinite(packageTotal)
+    && packageTotal >= 1;
+  const amount = eligible
+    ? Math.min(Math.ceil((packageTotal * mpesaDepositPercentage) / 100), Math.floor(packageTotal))
+    : null;
+  return {
+    eligible: Boolean(eligible && amount >= 1),
+    amount: eligible && amount >= 1 ? amount : null,
+    currency: 'KES',
+    percentage: mpesaDepositPercentage
+  };
+};
+
+const toPublicMpesaPayment = (payment) => ({
+  id: payment._id,
+  amount: payment.amount,
+  currency: payment.currency,
+  phone: payment.phone,
+  status: payment.status,
+  mpesaReceiptNumber: payment.mpesaReceiptNumber || null,
+  resultDescription: payment.status === 'pending' ? '' : payment.resultDescription || '',
+  createdAt: payment.createdAt,
+  updatedAt: payment.updatedAt
+});
 
 const toPublicQuoteResponse = (booking) => ({
   name: booking.name || '',
@@ -1072,17 +1170,213 @@ app.get('/api/my-bookings', requireAuth, async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     const bookings = await Booking.find({ userId: req.user.userId }).sort({ createdAt: -1 }).lean();
-    res.json(bookings.map(toCustomerBooking));
+    const paymentRecords = await MpesaPayment.find({ bookingId: { $in: bookings.map(({ _id }) => _id) } })
+      .sort({ createdAt: -1 })
+      .lean();
+    const paymentsByBooking = new Map();
+    paymentRecords.forEach((payment) => {
+      const key = String(payment.bookingId);
+      paymentsByBooking.set(key, [...(paymentsByBooking.get(key) || []), toPublicMpesaPayment(payment)]);
+    });
+    res.json(bookings.map((booking) => ({
+      ...toCustomerBooking(booking),
+      mpesaPayment: {
+        ...getBookingMpesaDeposit(booking),
+        payments: paymentsByBooking.get(String(booking._id)) || []
+      }
+    })));
   } catch (err) {
     console.error('Fetch my bookings error:', err);
     res.status(500).json({ error: 'Failed to fetch your bookings' });
   }
 });
 
+app.post('/api/my-bookings/:id/payments/mpesa/stk-push', requireAuth, async (req, res) => {
+  let payment;
+  let paymentPersisted = false;
+  try {
+    if (!req.user?.userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Invalid booking ID' });
+    const configurationError = getMpesaConfigurationError();
+    if (configurationError) return res.status(503).json({ error: configurationError });
+
+    const booking = await Booking.findOne({ _id: req.params.id, userId: req.user.userId });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    const deposit = getBookingMpesaDeposit(booking);
+    if (!deposit.eligible) {
+      return res.status(400).json({ error: 'Only approved bookings with a KES menu package can be paid through M-Pesa' });
+    }
+    const phone = normalizeMpesaPhone(req.body?.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Enter a valid Kenyan Safaricom number, for example 0712345678' });
+    }
+
+    const previousPayment = await MpesaPayment.findOne({ bookingId: booking._id }).sort({ createdAt: -1 });
+    if (previousPayment && previousPayment.status !== 'failed') {
+      return res.status(409).json({
+        error: previousPayment.status === 'pending'
+          ? 'An M-Pesa request is already pending for this booking. Check your phone or refresh the payment status.'
+          : previousPayment.status === 'completed'
+            ? 'The booking deposit has already been paid.'
+            : 'The previous payment needs support review before another attempt can be made.',
+        payment: toPublicMpesaPayment(previousPayment)
+      });
+    }
+
+    payment = new MpesaPayment({
+      bookingId: booking._id,
+      userId: req.user.userId,
+      amount: deposit.amount,
+      depositPercentage: deposit.percentage,
+      phone,
+      status: 'pending'
+    });
+    await payment.save();
+    paymentPersisted = true;
+
+    const credentials = Buffer.from(`${mpesaConfig.consumerKey}:${mpesaConfig.consumerSecret}`).toString('base64');
+    const oauthResponse = await fetch(`${mpesaBaseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+      headers: { Authorization: `Basic ${credentials}` },
+      signal: AbortSignal.timeout(15000)
+    });
+    const oauthBody = await oauthResponse.json();
+    if (!oauthResponse.ok || !oauthBody.access_token) {
+      payment.status = 'failed';
+      payment.resultDescription = 'Unable to authenticate with the M-Pesa service';
+      payment.updatedAt = new Date();
+      await payment.save();
+      return res.status(502).json({ error: 'M-Pesa authentication failed. Please try again later.' });
+    }
+
+    const timestamp = new Date(Date.now() + (3 * 60 * 60 * 1000))
+      .toISOString()
+      .replace(/[-:TZ.]/g, '')
+      .slice(0, 14);
+    const password = Buffer.from(`${mpesaConfig.shortCode}${mpesaConfig.passkey}${timestamp}`).toString('base64');
+    const stkResponse = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${oauthBody.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        BusinessShortCode: mpesaConfig.shortCode,
+        Password: password,
+        Timestamp: timestamp,
+        TransactionType: 'CustomerPayBillOnline',
+        Amount: deposit.amount,
+        PartyA: phone,
+        PartyB: mpesaConfig.shortCode,
+        PhoneNumber: phone,
+        CallBackURL: mpesaConfig.callbackUrl,
+        AccountReference: `SK${String(booking._id).slice(-8)}`,
+        TransactionDesc: 'Booking deposit'
+      }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const stkBody = await stkResponse.json();
+    if (!stkResponse.ok || String(stkBody.ResponseCode) !== '0' || !stkBody.CheckoutRequestID) {
+      payment.status = stkResponse.ok ? 'review' : 'failed';
+      payment.resultCode = Number.isFinite(Number(stkBody.ResponseCode)) ? Number(stkBody.ResponseCode) : undefined;
+      payment.resultDescription = String(stkBody.ResponseDescription || stkBody.errorMessage || 'M-Pesa did not accept the payment request').slice(0, 500);
+      payment.updatedAt = new Date();
+      await payment.save();
+      return res.status(502).json({
+        error: payment.status === 'review'
+          ? 'M-Pesa returned an unexpected response. Contact support before retrying.'
+          : 'M-Pesa could not start the payment. Please try again.'
+      });
+    }
+
+    payment.checkoutRequestId = String(stkBody.CheckoutRequestID);
+    payment.merchantRequestId = String(stkBody.MerchantRequestID || '');
+    payment.resultDescription = String(stkBody.CustomerMessage || 'STK Push sent to your phone');
+    payment.updatedAt = new Date();
+    await payment.save();
+    return res.status(202).json({
+      message: 'Payment request sent. Enter your M-Pesa PIN on your phone to complete it.',
+      payment: toPublicMpesaPayment(payment)
+    });
+  } catch (err) {
+    if (err?.code === 11000 && err?.keyPattern?.bookingId) {
+      return res.status(409).json({ error: 'An M-Pesa request is already pending for this booking.' });
+    }
+    if (paymentPersisted && payment?.status === 'pending') {
+      payment.status = 'review';
+      payment.resultDescription = 'The payment request could not be confirmed. Check status before trying again.';
+      payment.updatedAt = new Date();
+      await payment.save();
+    }
+    console.error('M-Pesa STK push error:', err);
+    return res.status(502).json({ error: 'Could not confirm the M-Pesa request. Check the payment status before retrying.' });
+  }
+});
+
+app.post('/api/payments/mpesa/callback', async (req, res) => {
+  try {
+    const callback = req.body?.Body?.stkCallback;
+    const checkoutRequestId = String(callback?.CheckoutRequestID || '');
+    if (!checkoutRequestId) return res.status(400).json({ error: 'Missing checkout request ID' });
+
+    const payment = await MpesaPayment.findOne({ checkoutRequestId });
+    if (!payment) return res.status(404).json({ error: 'Payment request not found' });
+    if (payment.status !== 'pending') return res.status(200).json({ result: 'Callback already processed' });
+
+    const resultCode = Number(callback.ResultCode);
+    const metadata = callback.CallbackMetadata?.Item;
+    const callbackValue = (name) => metadata?.find((item) => item.Name === name)?.Value;
+    const amount = Number(callbackValue('Amount'));
+    const receipt = String(callbackValue('MpesaReceiptNumber') || '');
+    const phone = String(callbackValue('PhoneNumber') || '');
+    const successMetadataMatches = resultCode === 0
+      && amount === payment.amount
+      && phone === payment.phone
+      && /^[A-Z0-9]{8,12}$/.test(receipt);
+
+    const update = {
+      resultDescription: String(callback.ResultDesc || 'Payment callback received').slice(0, 500),
+      callbackReceivedAt: new Date(),
+      updatedAt: new Date()
+    };
+    if (Number.isFinite(resultCode)) update.resultCode = resultCode;
+    if (resultCode !== 0) {
+      update.status = 'failed';
+    } else if (successMetadataMatches) {
+      update.status = 'completed';
+      update.mpesaReceiptNumber = receipt;
+    } else {
+      update.status = 'review';
+      update.resultDescription = 'M-Pesa reported success but the amount or transaction details could not be verified';
+    }
+    const updateResult = await MpesaPayment.updateOne(
+      { _id: payment._id, status: 'pending' },
+      { $set: update }
+    );
+    if (updateResult.modifiedCount === 0) {
+      return res.status(200).json({ result: 'Callback already processed' });
+    }
+    return res.status(200).json({ result: 'Callback processed' });
+  } catch (err) {
+    console.error('M-Pesa callback processing error:', err);
+    return res.status(500).json({ error: 'Could not process M-Pesa callback' });
+  }
+});
+
 app.get('/api/bookings', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const bookings = await Booking.find().sort({ createdAt: -1 });
-    res.json(bookings);
+    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
+    const paymentRecords = await MpesaPayment.find({ bookingId: { $in: bookings.map(({ _id }) => _id) } })
+      .sort({ createdAt: -1 })
+      .lean();
+    const paymentsByBooking = new Map();
+    paymentRecords.forEach((payment) => {
+      const key = String(payment.bookingId);
+      paymentsByBooking.set(key, [...(paymentsByBooking.get(key) || []), toPublicMpesaPayment(payment)]);
+    });
+    res.json(bookings.map((booking) => ({
+      ...booking,
+      payments: paymentsByBooking.get(String(booking._id)) || []
+    })));
   } catch (err) {
     console.error('Fetch bookings error:', err);
     res.status(500).json({ error: 'Failed to fetch bookings' });

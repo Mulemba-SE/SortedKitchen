@@ -337,7 +337,7 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
                     </li>
                   ) : (
                     <li role="none">
-                      <button type="button" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Account Settings</button>
+                      <Link to="/my-bookings" role="menuitem" onClick={() => setAccountMenuOpen(false)}>My Bookings</Link>
                     </li>
                   )}
                   <li role="none">
@@ -392,6 +392,9 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
             {isLoggedIn && <Link to="/booking" onClick={() => setMobileNavOpen(false)}>Book Now</Link>}
             {(isAdmin || isLoggedIn) && (
               <div className="showcase-mobile-actions-row">
+                {isLoggedIn && !isAdmin && (
+                  <Link to="/my-bookings" onClick={() => setMobileNavOpen(false)}>My Bookings</Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
@@ -711,7 +714,6 @@ function ShowcaseHome({ isAdmin = false, isLoggedIn = false, onLogout = () => {}
 }
 
 export default ShowcaseHome;
-
 
 
 

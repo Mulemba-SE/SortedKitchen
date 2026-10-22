@@ -2181,6 +2181,22 @@ function AdminDashboard({ onLogout }) {
                                 </ul>
                               </section>
                             )}
+                            {booking.payments?.length > 0 && (
+                              <section className="booking-payment-summary" aria-label="M-Pesa payment history">
+                                <strong>M-Pesa payments</strong>
+                                {booking.payments.map((payment) => (
+                                  <div className="booking-payment-row" key={payment.id}>
+                                    <span>
+                                      {payment.status === 'completed' ? 'Deposit received' : payment.status === 'pending' ? 'Pending' : payment.status === 'review' ? 'Needs review' : 'Failed'}
+                                      {' · '}{payment.currency} {Number(payment.amount || 0).toLocaleString('en-KE')}
+                                    </span>
+                                    <span>
+                                      {payment.mpesaReceiptNumber || (payment.createdAt ? new Date(payment.createdAt).toLocaleString() : '')}
+                                    </span>
+                                  </div>
+                                ))}
+                              </section>
+                            )}
                             {booking.quote?.items?.length > 0 && (
                               <section className="booking-quote-summary" aria-label="Saved estimate">
                                 <div className="booking-quote-summary-heading">

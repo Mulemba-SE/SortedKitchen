@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import BookingForm from './BookingForm';
 
 function BookingPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} }) {
@@ -116,7 +116,7 @@ function BookingPage({ isAdmin = false, isLoggedIn = false, onLogout = () => {} 
                       </li>
                     ) : (
                       <li role="none">
-                        <button type="button" role="menuitem" onClick={() => setAccountMenuOpen(false)}>Account Settings</button>
+                        <Link to="/my-bookings" role="menuitem" onClick={() => setAccountMenuOpen(false)}>My Bookings</Link>
                       </li>
                     )}
                     <li role="none">
