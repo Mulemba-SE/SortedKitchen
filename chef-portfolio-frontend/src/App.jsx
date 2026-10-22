@@ -19,31 +19,22 @@ import Careers from './components/Careers';
 import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import ShowcaseHome from './components/ShowcaseHome';
+import QuoteResponse from './components/QuoteResponse';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
+import { clearToken, getToken, getTokenRole, setToken } from './utils/authStorage';
 
 function App() {
-  const getTokenRole = (token) => {
-    try {
-      if (!token) return null;
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload?.role || null;
-    } catch {
-      return null;
-    }
-  };
+  const [authRole, setAuthRole] = useState(() => getTokenRole(getToken()));
 
-  const [authRole, setAuthRole] = useState(() => {
-    const token = localStorage.getItem('adminToken');
-    return getTokenRole(token);
-  });
-
-  const handleLogin = (token) => {
-    localStorage.setItem('adminToken', token);
+  const handleLogin = (token, remember = true) => {
+    setToken(token, remember);
     setAuthRole(getTokenRole(token));
   };
 
   const handleLogout = () => {
     setAuthRole(null);
-    localStorage.removeItem('adminToken');
+    clearToken();
   };
 
   const isAdmin = authRole === 'admin';
@@ -69,6 +60,9 @@ function App() {
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/booking" element={isLoggedIn ? <BookingPage isAdmin={isAdmin} isLoggedIn={isLoggedIn} onLogout={handleLogout} /> : <Navigate to="/login" replace />} />
+        <Route path="/quote-response" element={<QuoteResponse />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/login" element={isLoggedIn ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />} />
         <Route path="/signup" element={<Signup onLogin={handleLogin} />} />
         <Route path="/auth/google/callback" element={<GoogleAuthCallback onLogin={handleLogin} />} />

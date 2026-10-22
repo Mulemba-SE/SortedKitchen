@@ -1,0 +1,366 @@
+/* Sign In / Sign Up page. Everything is scoped under .sk-auth so it can't leak into the rest of the app. */
+.sk-auth {
+  --sk-orange: #e8730c;
+  --sk-orange-dark: #cf6409;
+  --sk-green: #15561f;
+  --sk-ink: #2b2418;
+  --sk-muted: #6b6256;
+  --sk-line: #e2dbd0;
+  --sk-field: #ffffff;
+
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #3a2a1c;
+  font-family: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+}
+
+/* Soft blurred photo behind the card */
+.sk-auth::before {
+  content: '';
+  position: absolute;
+  inset: -6%;
+  z-index: -2;
+  background-image: url('https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70&fm=webp');
+  background-size: cover;
+  background-position: center;
+  filter: blur(16px) saturate(1.15) brightness(0.8);
+  transform: scale(1.08);
+}
+
+.sk-auth::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(160deg, rgba(255, 190, 110, 0.22), rgba(60, 120, 60, 0.16));
+}
+
+.sk-auth__card {
+  width: min(460px, 100%);
+  padding: 1.6rem 1.6rem 1.5rem;
+  border-radius: 24px;
+  background: rgba(252, 249, 244, 0.97);
+  box-shadow: 0 28px 70px rgba(30, 18, 8, 0.35);
+  color: var(--sk-ink);
+}
+
+/* Brand */
+.sk-auth__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.sk-auth__logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sk-auth__logo img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+}
+
+.sk-auth__brand-name {
+  color: var(--sk-green);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Heading (beats the global `:root body h1` !important rules) */
+:root body .sk-auth__title {
+  margin: 0 0 0.3rem;
+  text-align: center;
+  color: var(--sk-ink) !important;
+  font-size: clamp(1.7rem, 5vw, 2.1rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.15 !important;
+}
+
+.sk-auth__subtitle {
+  margin: 0 0 1.2rem;
+  text-align: center;
+  color: var(--sk-muted);
+  font-size: 0.98rem;
+}
+
+/* Sign In / Sign Up toggle */
+.sk-auth__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0;
+  margin-bottom: 1.2rem;
+  border-radius: 999px;
+  background: #efeae2;
+}
+
+.sk-auth__tabs button {
+  height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sk-ink);
+  font: 700 1rem 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sk-auth__tabs button:hover:not(.is-active) {
+  background: rgba(232, 115, 12, 0.1);
+}
+
+.sk-auth__tabs button.is-active {
+  background: var(--sk-orange);
+  color: #fff;
+}
+
+/* Fields */
+.sk-auth__form {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.sk-auth__field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sk-auth__field label {
+  color: #51473a;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.sk-auth__control {
+  position: relative;
+}
+
+.sk-auth__icon {
+  position: absolute;
+  top: 50%;
+  left: 1.05rem;
+  transform: translateY(-50%);
+  color: #6f665a;
+  pointer-events: none;
+}
+
+.sk-auth__control input {
+  width: 100%;
+  height: 50px;
+  padding: 0 1rem 0 3rem;
+  border: 1px solid var(--sk-line);
+  border-radius: 999px;
+  background: var(--sk-field);
+  color: var(--sk-ink);
+  font: 500 0.95rem 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sk-auth__control input.has-trailing {
+  padding-right: 3.2rem;
+}
+
+.sk-auth__control input::placeholder {
+  color: #8c8377;
+}
+
+.sk-auth__control input:focus,
+.sk-auth__control input:focus-visible {
+  outline: none;
+  border-color: var(--sk-orange);
+  box-shadow: 0 0 0 3px rgba(232, 115, 12, 0.2);
+}
+
+.sk-auth__eye {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #51473a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sk-auth__eye:hover {
+  background: rgba(232, 115, 12, 0.12);
+}
+
+/* Remember me / Forgot password */
+.sk-auth__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sk-auth__remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #51473a;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.sk-auth__remember input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--sk-orange);
+  cursor: pointer;
+}
+
+.sk-auth__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sk-orange);
+  font: 600 0.95rem 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+}
+
+.sk-auth__link:hover {
+  color: var(--sk-orange-dark);
+  text-decoration: underline;
+}
+
+/* Messages */
+.sk-auth__message {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+}
+
+.sk-auth__message.is-error {
+  background: #fdeceb;
+  border: 1px solid rgba(190, 60, 60, 0.35);
+  color: #8f2525;
+}
+
+.sk-auth__message.is-info {
+  background: #fff4e6;
+  border: 1px solid rgba(232, 115, 12, 0.35);
+  color: #7a4310;
+}
+
+/* Primary button */
+.sk-auth__submit {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sk-orange);
+  color: #fff;
+  font: 700 1.05rem 'Montserrat', 'Segoe UI', Arial, sans-serif;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(232, 115, 12, 0.3);
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.sk-auth__submit:hover:not(:disabled) {
+  background: var(--sk-orange-dark);
+  transform: translateY(-1px);
+}
+
+.sk-auth__submit:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Divider + Google */
+.sk-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 1.1rem 0;
+  color: var(--sk-muted);
+  font-size: 0.95rem;
+}
+
+.sk-auth__divider::before,
+.sk-auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--sk-line);
+}
+
+.sk-auth__google {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  width: 100%;
+}
+
+/* Footer switch */
+.sk-auth__switch {
+  margin: 1.1rem 0 0;
+  text-align: center;
+  color: var(--sk-muted);
+  font-size: 0.95rem;
+}
+
+.sk-auth__switch a {
+  color: var(--sk-orange);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.sk-auth__switch a:hover {
+  color: var(--sk-orange-dark);
+}
+
+/* Keyboard focus */
+.sk-auth button:focus-visible,
+.sk-auth a:focus-visible,
+.sk-auth__remember input:focus-visible {
+  outline: 3px solid rgba(232, 115, 12, 0.45);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .sk-auth {
+    padding: 1rem 0.75rem;
+    align-items: flex-start;
+  }
+
+  .sk-auth__card {
+    padding: 1.3rem 1.1rem 1.2rem;
+    border-radius: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-auth * {
+    transition: none !important;
+  }
+}

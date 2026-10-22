@@ -1,22 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { clearToken, getTokenRole } from '../utils/authStorage';
 
 function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [theme, setTheme] = useState('light');
   const [lang, setLang] = useState('en');
-  const getTokenRole = () => {
-    try {
-      const token = localStorage.getItem('adminToken');
-      if (!token) return null;
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload?.role || null;
-    } catch {
-      return null;
-    }
-  };
-  const [authRole, setAuthRole] = useState(getTokenRole);
+  const [authRole, setAuthRole] = useState(() => getTokenRole());
   const location = useLocation();
 
   useEffect(() => {
@@ -84,7 +75,7 @@ function Navbar() {
   const isLoggedIn = Boolean(authRole);
 
   const handleLogout = () => {
-    localStorage.removeItem('adminToken');
+    clearToken();
     setAuthRole(null);
     closeMenus();
     window.location.href = '/login';

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
+import { getToken } from '../utils/authStorage';
 
 function BookingForm({ embedded = false, defaultOccasion = '' }) {
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -68,7 +69,7 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
     e.preventDefault();
     if (!validateForm()) return;
 
-    const token = localStorage.getItem('adminToken');
+    const token = getToken();
     if (!token) {
       setSubmitStatus({ type: 'error', message: 'Please log in before booking.' });
       return;

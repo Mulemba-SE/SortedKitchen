@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const path = require('path');
+const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const app = express();
@@ -89,6 +90,7 @@ mongoose.connection.on('error', (err) => {
 
 // Define Schema
 const bookingSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   name: String,
   email: String,
   phone: String,
@@ -108,11 +110,13 @@ const bookingSchema = new mongoose.Schema({
       lineTotal: { type: Number, min: 0 }
     }],
     total: { type: Number, min: 0 },
-    status: { type: String, enum: ['draft', 'sent'], default: 'draft' },
+    status: { type: String, enum: ['draft', 'sent', 'accepted', 'declined'], default: 'draft' },
     updatedAt: Date,
     updatedBy: String,
     sentAt: Date,
-    sentBy: String
+    sentBy: String,
+    respondedAt: Date,
+    responseTokenHash: { type: String, select: false }
   },
   status: { type: String, enum: ['pending', 'approved'], default: 'pending' },
   approvedAt: Date,
@@ -120,6 +124,7 @@ const bookingSchema = new mongoose.Schema({
   approvedBy: String,
   createdAt: { type: Date, default: Date.now }
 });
+bookingSchema.index({ 'quote.responseTokenHash': 1 }, { sparse: true });
 
 const Booking = mongoose.model('Booking', bookingSchema);
 
@@ -139,6 +144,8 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String, default: '' },
   authProvider: { type: String, default: 'local' },
   googleId: { type: String, default: '' },
+  passwordResetTokenHash: { type: String, select: false },
+  passwordResetExpiresAt: { type: Date, select: false },
   role: { type: String, default: 'admin' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -394,6 +401,21 @@ const googleOAuthClient = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
   ? new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, googleRedirectUri)
   : null;
 const frontendUrl = String(FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+const hashQuoteResponseToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const isValidQuoteResponseToken = (token) => /^[a-f0-9]{64}$/.test(String(token || ''));
+
+const toPublicQuoteResponse = (booking) => ({
+  name: booking.name || '',
+  date: booking.date || '',
+  occasion: booking.occasion || '',
+  status: booking.quote.status,
+  respondedAt: booking.quote.respondedAt || null,
+  quote: {
+    currency: booking.quote.currency || 'KES',
+    items: booking.quote.items.map(({ description, quantity, unitPrice, lineTotal }) => ({ description, quantity, unitPrice, lineTotal })),
+    total: booking.quote.total
+  }
+});
 
 const requireAuth = (req, res, next) => {
   const header = req.headers.authorization || '';
@@ -525,6 +547,119 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error('Login failed:', err);
     return res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    if (!EMAIL_USER || !EMAIL_APP_PASSWORD) {
+      return res.status(503).json({ error: 'Password reset email is not configured on the server' });
+    }
+    const dbUnavailable = ensureDatabaseReady(res);
+    if (dbUnavailable) return dbUnavailable;
+
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+
+    const genericResponse = { message: 'If an account with that email exists, a password reset link will be sent.' };
+    const user = await User.findOne({ email });
+    if (!user) return res.json(genericResponse);
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { passwordResetTokenHash: resetTokenHash, passwordResetExpiresAt: expiresAt } }
+    );
+
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
+    try {
+      await transporter.sendMail({
+        from: EMAIL_USER,
+        to: user.email,
+        subject: 'Reset your Sorted Kitchen password',
+        text: [
+          `Hello ${user.name || 'there'},`,
+          '',
+          'We received a request to reset your Sorted Kitchen password.',
+          `Choose a new password using this link: ${resetUrl}`,
+          '',
+          'This link expires in 1 hour and can only be used once.',
+          'If you did not request a password reset, you can ignore this email.',
+          '',
+          'Sorted Kitchen'
+        ].join('\n'),
+        html: `<p>Hello ${escapeHtml(user.name || 'there')},</p><p>We received a request to reset your Sorted Kitchen password.</p><p><a href="${escapeHtml(resetUrl)}">Choose a new password</a></p><p>This link expires in 1 hour and can only be used once. If you did not request a password reset, you can ignore this email.</p><p>Sorted Kitchen</p>`
+      });
+    } catch (mailError) {
+      await User.updateOne(
+        { _id: user._id, passwordResetTokenHash: resetTokenHash },
+        { $unset: { passwordResetTokenHash: 1, passwordResetExpiresAt: 1 } }
+      );
+      throw mailError;
+    }
+
+    return res.json(genericResponse);
+  } catch (err) {
+    console.error('Request password reset error:', err);
+    return res.status(502).json({ error: 'Could not send the password reset email. Please try again later.' });
+  }
+});
+
+app.get('/api/auth/reset-password/:token', async (req, res) => {
+  try {
+    const token = String(req.params.token || '');
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return res.status(400).json({ error: 'This password reset link is invalid or expired' });
+    }
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await User.findOne({
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpiresAt: { $gt: new Date() }
+    }).select('_id');
+    if (!user) {
+      return res.status(400).json({ error: 'This password reset link is invalid or expired' });
+    }
+    return res.json({ valid: true });
+  } catch (err) {
+    console.error('Validate password reset token error:', err);
+    return res.status(500).json({ error: 'Could not validate this password reset link' });
+  }
+});
+
+app.post('/api/auth/reset-password/:token', async (req, res) => {
+  try {
+    const token = String(req.params.token || '');
+    const password = req.body?.password;
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return res.status(400).json({ error: 'This password reset link is invalid or expired' });
+    }
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be between 8 and 128 characters' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const passwordHash = await bcrypt.hash(password, 10);
+    const result = await User.updateOne(
+      { passwordResetTokenHash: tokenHash, passwordResetExpiresAt: { $gt: new Date() } },
+      {
+        $set: { passwordHash, authProvider: 'local', updatedAt: new Date() },
+        $unset: { passwordResetTokenHash: 1, passwordResetExpiresAt: 1 }
+      }
+    );
+    if (!result.modifiedCount) {
+      return res.status(400).json({ error: 'This password reset link is invalid, expired, or already used' });
+    }
+    return res.json({ message: 'Password reset successfully. You can now sign in with your new password.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return res.status(500).json({ error: 'Could not reset your password. Please try again.' });
   }
 });
 
@@ -687,10 +822,46 @@ app.get('/api/auth/google/callback', async (req, res) => {
   }
 });
 
+// Fields a customer is allowed to set when requesting a booking.
+const BOOKING_REQUEST_FIELDS = ['name', 'email', 'phone', 'date', 'time', 'guests', 'occasion', 'eventAddress', 'referralSource', 'eventDetails'];
+
+const pickBookingRequest = (body = {}) => Object.fromEntries(
+  BOOKING_REQUEST_FIELDS
+    .filter((field) => Object.hasOwn(body, field))
+    .map((field) => [field, body[field]])
+);
+
+// What a customer may see of their own booking. Internal fields (approvedBy, draft quotes, emails sent) stay hidden.
+const toCustomerBooking = (booking) => {
+  const quote = booking.quote;
+  const quoteVisible = quote?.status === 'sent' && Array.isArray(quote.items) && quote.items.length > 0;
+  return {
+    id: booking._id,
+    date: booking.date,
+    time: booking.time,
+    guests: booking.guests,
+    occasion: booking.occasion,
+    eventAddress: booking.eventAddress,
+    eventDetails: booking.eventDetails,
+    status: booking.status,
+    createdAt: booking.createdAt,
+    approvedAt: booking.approvedAt || null,
+    quote: quoteVisible
+      ? {
+        currency: quote.currency || 'KES',
+        items: quote.items.map(({ description, quantity, unitPrice, lineTotal }) => ({ description, quantity, unitPrice, lineTotal })),
+        total: quote.total,
+        sentAt: quote.sentAt || null
+      }
+      : null
+  };
+};
+
 app.post('/api/book', requireAuth, async (req, res) => {
   try {
     const newBooking = new Booking({
-      ...req.body,
+      ...pickBookingRequest(req.body),
+      userId: req.user?.userId,
       status: 'pending',
       approvedAt: undefined,
       approvalEmailSentAt: undefined,
@@ -706,6 +877,19 @@ app.post('/api/book', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Booking create error:', err);
     res.status(500).json({ error: 'Failed to save booking' });
+  }
+});
+
+app.get('/api/my-bookings', requireAuth, async (req, res) => {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const bookings = await Booking.find({ userId: req.user.userId }).sort({ createdAt: -1 }).lean();
+    res.json(bookings.map(toCustomerBooking));
+  } catch (err) {
+    console.error('Fetch my bookings error:', err);
+    res.status(500).json({ error: 'Failed to fetch your bookings' });
   }
 });
 
@@ -804,13 +988,19 @@ app.put('/api/bookings/:id/quote', requireAuth, requireAdmin, async (req, res) =
 
     const total = Math.round(normalizedItems.reduce((sum, item) => sum + item.lineTotal, 0) * 100) / 100;
     const booking = await Booking.findByIdAndUpdate(req.params.id, {
-      quote: {
-        currency,
-        items: normalizedItems,
-        total,
-        status: 'draft',
-        updatedAt: new Date(),
-        updatedBy: req.user?.email || ''
+      $set: {
+        'quote.currency': currency,
+        'quote.items': normalizedItems,
+        'quote.total': total,
+        'quote.status': 'draft',
+        'quote.updatedAt': new Date(),
+        'quote.updatedBy': req.user?.email || ''
+      },
+      $unset: {
+        'quote.sentAt': 1,
+        'quote.sentBy': 1,
+        'quote.respondedAt': 1,
+        'quote.responseTokenHash': 1
       }
     }, { new: true, runValidators: true });
 
@@ -836,11 +1026,16 @@ app.post('/api/bookings/:id/quote/send', requireAuth, requireAdmin, async (req, 
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
     if (!booking.email) return res.status(400).json({ error: 'This booking has no client email address' });
     if (!booking.quote?.items?.length) return res.status(400).json({ error: 'Save an estimate before sending it' });
+    if (['accepted', 'declined'].includes(booking.quote.status)) {
+      return res.status(409).json({ error: 'This estimate has already been answered. Edit it before sending a new estimate.' });
+    }
 
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[character]);
     const currency = booking.quote.currency || 'KES';
+    const responseToken = crypto.randomBytes(32).toString('hex');
+    const responseUrl = `${frontendUrl}/quote-response?token=${responseToken}`;
     const itemRows = booking.quote.items.map((item) => (
       `<tr><td>${escapeHtml(item.description)}</td><td>${item.quantity}</td><td>${currency} ${Number(item.unitPrice).toFixed(2)}</td><td>${currency} ${Number(item.lineTotal).toFixed(2)}</td></tr>`
     )).join('');
@@ -855,10 +1050,12 @@ app.post('/api/bookings/:id/quote/send', requireAuth, requireAdmin, async (req, 
       '',
       'This is an estimate for review, not an invoice or payment request.',
       '',
+      `Review and accept or decline this estimate: ${responseUrl}`,
+      '',
       'Best regards,',
       'Sorted Kitchen'
     ].join('\n');
-    const html = `<p>Hello ${escapeHtml(booking.name || 'there')},</p><p>Here is the catering estimate for your ${escapeHtml(booking.occasion || 'event')} on ${escapeHtml(booking.date || 'your requested date')}.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th align="left">Item</th><th align="right">Qty</th><th align="right">Unit price</th><th align="right">Line total</th></tr></thead><tbody>${itemRows}</tbody></table><p style="text-align:right;font-size:18px"><strong>Estimated total: ${currency} ${Number(booking.quote.total).toFixed(2)}</strong></p><p>This is an estimate for review, not an invoice or payment request.</p><p>Best regards,<br>Sorted Kitchen</p>`;
+    const html = `<p>Hello ${escapeHtml(booking.name || 'there')},</p><p>Here is the catering estimate for your ${escapeHtml(booking.occasion || 'event')} on ${escapeHtml(booking.date || 'your requested date')}.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th align="left">Item</th><th align="right">Qty</th><th align="right">Unit price</th><th align="right">Line total</th></tr></thead><tbody>${itemRows}</tbody></table><p style="text-align:right;font-size:18px"><strong>Estimated total: ${currency} ${Number(booking.quote.total).toFixed(2)}</strong></p><p>This is an estimate for review, not an invoice or payment request.</p><p><a href="${escapeHtml(responseUrl)}">Review and respond to this estimate</a></p><p>Best regards,<br>Sorted Kitchen</p>`;
 
     await transporter.sendMail({
       from: EMAIL_USER,
@@ -871,6 +1068,7 @@ app.post('/api/bookings/:id/quote/send', requireAuth, requireAdmin, async (req, 
     booking.quote.status = 'sent';
     booking.quote.sentAt = new Date();
     booking.quote.sentBy = req.user?.email || '';
+    booking.quote.responseTokenHash = hashQuoteResponseToken(responseToken);
     await booking.save();
     await new Activity({
       actor: req.user?.email || '',
@@ -881,6 +1079,73 @@ app.post('/api/bookings/:id/quote/send', requireAuth, requireAdmin, async (req, 
   } catch (err) {
     console.error('Send quote email error:', err);
     return res.status(502).json({ error: 'Could not send estimate email. Check the mail server configuration and try again.' });
+  }
+});
+
+app.get('/api/quote-response/:token', async (req, res) => {
+  try {
+    if (!isValidQuoteResponseToken(req.params.token)) {
+      return res.status(404).json({ error: 'Estimate response link is invalid or no longer available' });
+    }
+    const booking = await Booking.findOne({
+      'quote.responseTokenHash': hashQuoteResponseToken(req.params.token),
+      'quote.status': { $in: ['sent', 'accepted', 'declined'] }
+    });
+    if (!booking) return res.status(404).json({ error: 'Estimate response link is invalid or no longer available' });
+    return res.json(toPublicQuoteResponse(booking));
+  } catch (err) {
+    console.error('Fetch public quote error:', err);
+    return res.status(500).json({ error: 'Could not load this estimate' });
+  }
+});
+
+app.post('/api/quote-response/:token', async (req, res) => {
+  try {
+    if (!isValidQuoteResponseToken(req.params.token)) {
+      return res.status(404).json({ error: 'Estimate response link is invalid or no longer available' });
+    }
+    const decision = req.body?.decision;
+    if (!['accepted', 'declined'].includes(decision)) {
+      return res.status(400).json({ error: 'Choose whether to accept or decline this estimate' });
+    }
+
+    const tokenHash = hashQuoteResponseToken(req.params.token);
+    const booking = await Booking.findOneAndUpdate(
+      { 'quote.responseTokenHash': tokenHash, 'quote.status': 'sent' },
+      { $set: { 'quote.status': decision, 'quote.respondedAt': new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!booking) {
+      const existingBooking = await Booking.findOne({ 'quote.responseTokenHash': tokenHash });
+      if (!existingBooking) {
+        return res.status(404).json({ error: 'Estimate response link is invalid or no longer available' });
+      }
+      if (existingBooking.quote.status === decision) {
+        return res.json({
+          message: `This estimate was already ${decision}.`,
+          response: toPublicQuoteResponse(existingBooking)
+        });
+      }
+      return res.status(409).json({
+        error: 'This estimate has already received a response',
+        response: toPublicQuoteResponse(existingBooking)
+      });
+    }
+
+    await new Activity({
+      actor: booking.email || '',
+      action: decision === 'accepted' ? 'Quote Accepted' : 'Quote Declined',
+      details: `${booking.name || 'Client'} ${decision} the estimate for ${booking.quote.currency} ${Number(booking.quote.total).toFixed(2)}`
+    }).save();
+
+    return res.json({
+      message: `Estimate ${decision}.`,
+      response: toPublicQuoteResponse(booking)
+    });
+  } catch (err) {
+    console.error('Save public quote response error:', err);
+    return res.status(500).json({ error: 'Could not record your estimate response' });
   }
 });
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import LoadingSpinner from './LoadingSpinner';
+import { clearToken, getToken } from '../utils/authStorage';
 
 function AdminDashboard({ onLogout }) {
   const MEALS_PER_PAGE = 10;
@@ -78,7 +79,7 @@ function AdminDashboard({ onLogout }) {
   const [sendingQuoteId, setSendingQuoteId] = useState(null);
   const [bookingActionStatus, setBookingActionStatus] = useState(null);
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  const token = localStorage.getItem('adminToken');
+  const token = getToken();
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   const navigate = useNavigate();
   const authTimersRef = useRef({ redirect: null, hide: null });
@@ -106,7 +107,7 @@ function AdminDashboard({ onLogout }) {
   const handleAuthExpired = () => {
     setAuthExpired(true);
     setAuthToastVisible(true);
-    localStorage.removeItem('adminToken');
+    clearToken();
     if (authTimersRef.current.redirect) clearTimeout(authTimersRef.current.redirect);
     if (authTimersRef.current.hide) clearTimeout(authTimersRef.current.hide);
     authTimersRef.current.redirect = setTimeout(() => {
@@ -1898,6 +1899,13 @@ function AdminDashboard({ onLogout }) {
                 ) : (
                   pagedBookings.map(booking => {
                     const isOpen = expandedBookingId === booking._id;
+                    const quoteStatus = booking.quote?.status || 'draft';
+                    const quoteStatusLabels = {
+                      draft: 'Draft',
+                      sent: 'Awaiting response',
+                      accepted: 'Accepted',
+                      declined: 'Declined'
+                    };
                     return (
                       <div key={booking._id} className={`booking-card ${isOpen ? 'open' : ''}`}>
                         <button
@@ -1915,6 +1923,11 @@ function AdminDashboard({ onLogout }) {
                           <span className={`booking-status-pill ${(booking.status || 'pending').toLowerCase()}`}>
                             {booking.status === 'approved' ? 'Approved' : 'Pending'}
                           </span>
+                          {booking.quote?.items?.length > 0 && (
+                            <span className={`quote-delivery-status ${quoteStatus}`}>
+                              Quote: {quoteStatusLabels[quoteStatus] || 'Draft'}
+                            </span>
+                          )}
                           <span className={`booking-chevron ${isOpen ? 'open' : ''}`} aria-hidden="true">
                             <span className="booking-chevron-icon"></span>
                           </span>
@@ -1984,8 +1997,8 @@ function AdminDashboard({ onLogout }) {
                               <section className="booking-quote-summary" aria-label="Saved estimate">
                                 <div className="booking-quote-summary-heading">
                                   <strong>Estimate · {booking.quote.currency} {Number(booking.quote.total || 0).toFixed(2)}</strong>
-                                  <span className={`quote-delivery-status ${booking.quote.status === 'sent' ? 'sent' : 'draft'}`}>
-                                    {booking.quote.status === 'sent' ? 'Sent' : 'Draft'}
+                                  <span className={`quote-delivery-status ${quoteStatus}`}>
+                                    {quoteStatusLabels[quoteStatus] || 'Draft'}
                                   </span>
                                 </div>
                                 <ul>
@@ -1999,6 +2012,7 @@ function AdminDashboard({ onLogout }) {
                                 <small>
                                   Estimate only · last updated {booking.quote.updatedAt ? new Date(booking.quote.updatedAt).toLocaleString() : '--'}
                                   {booking.quote.sentAt ? ` · emailed ${new Date(booking.quote.sentAt).toLocaleString()}` : ''}
+                                  {booking.quote.respondedAt ? ` · customer responded ${new Date(booking.quote.respondedAt).toLocaleString()}` : ''}
                                 </small>
                                 {editingQuoteId !== booking._id && (
                                   <div className="booking-quote-actions">
@@ -2013,9 +2027,17 @@ function AdminDashboard({ onLogout }) {
                                       type="button"
                                       className="btn-secondary"
                                       onClick={() => handleQuoteSend(booking._id)}
-                                      disabled={sendingQuoteId === booking._id || savingQuoteId === booking._id}
+                                      disabled={sendingQuoteId === booking._id || savingQuoteId === booking._id || ['accepted', 'declined'].includes(quoteStatus)}
                                     >
-                                      {sendingQuoteId === booking._id ? 'Sending...' : booking.quote.status === 'sent' ? 'Resend estimate' : 'Email estimate'}
+                                      {sendingQuoteId === booking._id
+                                        ? 'Sending...'
+                                        : quoteStatus === 'accepted'
+                                          ? 'Accepted by customer'
+                                          : quoteStatus === 'declined'
+                                            ? 'Declined by customer'
+                                            : quoteStatus === 'sent'
+                                              ? 'Resend estimate'
+                                              : 'Email estimate'}
                                     </button>
                                   </div>
                                 )}
