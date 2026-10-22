@@ -79,14 +79,15 @@ if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
   });
 }
 
-// Connect to MongoDB
-mongoose.connect(MONGODB_URI || MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017/chef_booking')
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+if (process.env.NODE_ENV !== 'test') {
+  mongoose.connect(MONGODB_URI || MONGODB_CONNECTION_STRING || 'mongodb://localhost:27017/chef_booking')
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-mongoose.connection.on('error', (err) => {
-  console.error('MongoDB runtime error:', err);
-});
+  mongoose.connection.on('error', (err) => {
+    console.error('MongoDB runtime error:', err);
+  });
+}
 
 // Define Schema
 const bookingSchema = new mongoose.Schema({
@@ -145,7 +146,7 @@ bookingSchema.index({ 'quote.responseTokenHash': 1 }, { sparse: true });
 const Booking = mongoose.model('Booking', bookingSchema);
 
 const mpesaPaymentSchema = new mongoose.Schema({
-  bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true, index: true },
+  bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   amount: { type: Number, required: true, min: 1 },
   currency: { type: String, default: 'KES', enum: ['KES'] },
@@ -2206,6 +2207,10 @@ if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+}
+
+if (process.env.NODE_ENV === 'test') {
+  app.locals.testModels = { Booking, MpesaPayment };
 }
 
 module.exports = app;
