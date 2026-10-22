@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import LoadingSpinner from './LoadingSpinner';
+import MenuPackageManager from './MenuPackageManager';
+import AdminAnalytics from './AdminAnalytics';
 import { clearToken, getToken } from '../utils/authStorage';
 
 function AdminDashboard({ onLogout }) {
@@ -69,6 +71,10 @@ function AdminDashboard({ onLogout }) {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   });
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [unavailableDateReason, setUnavailableDateReason] = useState('');
+  const [unavailableDateStatus, setUnavailableDateStatus] = useState(null);
+  const [savingUnavailableDate, setSavingUnavailableDate] = useState(false);
   const [approvingBookingId, setApprovingBookingId] = useState(null);
   const [editingBookingId, setEditingBookingId] = useState(null);
   const [bookingForm, setBookingForm] = useState(null);
@@ -194,6 +200,21 @@ function AdminDashboard({ onLogout }) {
         setReviews([]);
       });
 
+    fetch(`${apiUrl}/api/admin/unavailable-dates`, { headers: authHeaders })
+      .then(async (res) => {
+        if (res.status === 401) {
+          handleAuthExpired();
+          throw new Error('Unauthorized');
+        }
+        if (!res.ok) throw new Error('Failed to fetch unavailable dates');
+        return res.json();
+      })
+      .then((data) => setUnavailableDates(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        console.error('Error fetching unavailable dates:', err);
+        setUnavailableDateStatus({ type: 'error', message: 'Could not load unavailable dates.' });
+      });
+
     // Fetch Meals
     fetch(`${apiUrl}/api/meals`)
       .then(async res => {
@@ -263,6 +284,11 @@ function AdminDashboard({ onLogout }) {
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (data.booking) {
+          setBookings((currentBookings) => (
+            currentBookings.map((booking) => (booking._id === data.booking._id ? data.booking : booking))
+          ));
+        }
         setBookingActionStatus({ type: 'error', message: data.error || 'Failed to approve booking.' });
         return;
       }
@@ -331,9 +357,10 @@ function AdminDashboard({ onLogout }) {
         return;
       }
 
-      const updatedBooking = await response.json().catch(() => null);
+      const data = await response.json().catch(() => ({}));
+      const updatedBooking = data.booking || data;
       if (!response.ok || !updatedBooking) {
-        setBookingActionStatus({ type: 'error', message: 'Failed to update booking.' });
+        setBookingActionStatus({ type: 'error', message: data.error || 'Failed to update booking.' });
         return;
       }
 
@@ -704,6 +731,10 @@ function AdminDashboard({ onLogout }) {
   const selectedDayBookings = bookings
     .filter((booking) => booking.date === selectedCalendarDate)
     .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const selectedUnavailableDate = unavailableDates.find((item) => item.date === selectedCalendarDate);
+  const selectedDateIsBooked = bookings.some((booking) => (
+    booking.date === selectedCalendarDate && booking.status === 'approved'
+  ));
   const calendarMonthBookings = bookings
     .filter((booking) => /^\d{4}-\d{2}-\d{2}$/.test(booking.date || '')
       && booking.date.startsWith(`${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}-`))
@@ -746,6 +777,63 @@ function AdminDashboard({ onLogout }) {
     const today = new Date();
     setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedCalendarDate(formatCalendarDate(today.getFullYear(), today.getMonth(), today.getDate()));
+  };
+
+  const handleBlockSelectedDate = async (event) => {
+    event.preventDefault();
+    if (!token || savingUnavailableDate) return;
+    setSavingUnavailableDate(true);
+    setUnavailableDateStatus(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/unavailable-dates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ date: selectedCalendarDate, reason: unavailableDateReason })
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.unavailableDate) {
+        setUnavailableDateStatus({ type: 'error', message: data.error || 'Could not mark this date unavailable.' });
+        return;
+      }
+      setUnavailableDates((current) => [...current, data.unavailableDate].sort((a, b) => a.date.localeCompare(b.date)));
+      setUnavailableDateReason('');
+      setUnavailableDateStatus({ type: 'success', message: `${selectedCalendarDate} marked unavailable.` });
+    } catch {
+      setUnavailableDateStatus({ type: 'error', message: 'Could not connect to block this date.' });
+    } finally {
+      setSavingUnavailableDate(false);
+    }
+  };
+
+  const handleUnblockSelectedDate = async () => {
+    if (!token || !selectedUnavailableDate || savingUnavailableDate) return;
+    setSavingUnavailableDate(true);
+    setUnavailableDateStatus(null);
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/unavailable-dates/${selectedUnavailableDate._id}`, {
+        method: 'DELETE',
+        headers: authHeaders
+      });
+      if (response.status === 401) {
+        handleAuthExpired();
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setUnavailableDateStatus({ type: 'error', message: data.error || 'Could not make this date available.' });
+        return;
+      }
+      setUnavailableDates((current) => current.filter((item) => item._id !== selectedUnavailableDate._id));
+      setUnavailableDateStatus({ type: 'success', message: `${selectedCalendarDate} is available again.` });
+    } catch {
+      setUnavailableDateStatus({ type: 'error', message: 'Could not connect to unblock this date.' });
+    } finally {
+      setSavingUnavailableDate(false);
+    }
   };
 
   const handleExportCalendar = () => {
@@ -1324,6 +1412,10 @@ function AdminDashboard({ onLogout }) {
               <span className="admin-nav-icon">D</span>
               <span className="admin-nav-label">Dashboard</span>
             </a>
+            <a href="#analytics" className="admin-nav-link" onClick={() => { setActiveMainSection('analytics'); setSidebarOpen(false); }}>
+              <span className="admin-nav-icon">A</span>
+              <span className="admin-nav-label">Analytics</span>
+            </a>
             <a href="#bookings" className="admin-nav-link" onClick={() => handleSidebarNavigation('bookings')}>
               <span className="admin-nav-icon">B</span>
               <span className="admin-nav-label">Bookings</span>
@@ -1497,7 +1589,42 @@ function AdminDashboard({ onLogout }) {
                 >
                   Meals
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMainSection === 'packages'}
+                  className={`admin-main-tab ${activeMainSection === 'packages' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('packages')}
+                >
+                  Packages
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMainSection === 'analytics'}
+                  className={`admin-main-tab ${activeMainSection === 'analytics' ? 'active' : ''}`}
+                  onClick={() => setActiveMainSection('analytics')}
+                >
+                  Analytics
+                </button>
               </div>
+
+              {activeMainSection === 'analytics' && (
+                <AdminAnalytics
+                  apiUrl={apiUrl}
+                  token={token}
+                  onAuthExpired={handleAuthExpired}
+                />
+              )}
+
+              {activeMainSection === 'packages' && (
+                <MenuPackageManager
+                  meals={meals}
+                  apiUrl={apiUrl}
+                  token={token}
+                  onAuthExpired={handleAuthExpired}
+                />
+              )}
 
               {activeMainSection === 'reviews' && (
                 <section className="review-manager panel" id="reviews">
@@ -1780,19 +1907,22 @@ function AdminDashboard({ onLogout }) {
                       if (!day) return <span className="calendar-empty-day" key={`empty-${index}`} aria-hidden="true" />;
                       const dateKey = formatCalendarDate(calendarYear, calendarMonthIndex, day);
                       const dayBookings = bookings.filter((booking) => booking.date === dateKey);
+                      const isUnavailable = unavailableDates.some((item) => item.date === dateKey);
+                      const isBooked = dayBookings.some((booking) => booking.status === 'approved');
                       const isToday = dateKey === formatCalendarDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
                       return (
                         <button
                           type="button"
                           role="gridcell"
                           key={dateKey}
-                          className={`calendar-day ${dateKey === selectedCalendarDate ? 'selected' : ''} ${isToday ? 'today' : ''} ${dayBookings.length ? 'has-bookings' : ''}`}
-                          aria-label={`${calendarMonthLabel} ${day}${dayBookings.length ? `, ${dayBookings.length} booking${dayBookings.length === 1 ? '' : 's'}` : ''}`}
+                          className={`calendar-day ${dateKey === selectedCalendarDate ? 'selected' : ''} ${isToday ? 'today' : ''} ${dayBookings.length ? 'has-bookings' : ''} ${isBooked ? 'date-booked' : ''} ${isUnavailable ? 'date-unavailable' : ''}`}
+                          aria-label={`${calendarMonthLabel} ${day}${dayBookings.length ? `, ${dayBookings.length} booking${dayBookings.length === 1 ? '' : 's'}` : ''}${isBooked ? ', booked' : ''}${isUnavailable ? ', unavailable' : ''}`}
                           aria-pressed={dateKey === selectedCalendarDate}
                           onClick={() => setSelectedCalendarDate(dateKey)}
                         >
                           <span>{day}</span>
                           {dayBookings.length > 0 && <span className="calendar-booking-count">{dayBookings.length}</span>}
+                          {isUnavailable && <span className="calendar-unavailable-marker" aria-hidden="true">×</span>}
                         </button>
                       );
                     })}
@@ -1801,6 +1931,42 @@ function AdminDashboard({ onLogout }) {
                     <div className="panel-head">
                       <h5>{new Date(`${selectedCalendarDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h5>
                       <span>{selectedDayBookings.length} booking{selectedDayBookings.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="calendar-availability-control">
+                      {selectedUnavailableDate ? (
+                        <div className="calendar-blocked-notice">
+                          <span>
+                            <strong>Unavailable</strong>
+                            {selectedUnavailableDate.reason && <small>{selectedUnavailableDate.reason}</small>}
+                          </span>
+                          <button type="button" className="btn-secondary" onClick={handleUnblockSelectedDate} disabled={savingUnavailableDate}>
+                            {savingUnavailableDate ? 'Updating...' : 'Make available'}
+                          </button>
+                        </div>
+                      ) : (
+                        <form className="calendar-block-date-form" onSubmit={handleBlockSelectedDate}>
+                          <label htmlFor="unavailable-date-reason">Mark this date unavailable</label>
+                          <div>
+                            <input
+                              id="unavailable-date-reason"
+                              type="text"
+                              value={unavailableDateReason}
+                              onChange={(event) => setUnavailableDateReason(event.target.value)}
+                              placeholder="Optional reason"
+                              maxLength={120}
+                            />
+                            <button type="submit" className="btn-secondary" disabled={savingUnavailableDate || selectedDateIsBooked}>
+                              {savingUnavailableDate ? 'Blocking...' : 'Block date'}
+                            </button>
+                          </div>
+                          {selectedDateIsBooked && <small>An approved booking already reserves this date.</small>}
+                        </form>
+                      )}
+                      {unavailableDateStatus && (
+                        <p className={`helper-text ${unavailableDateStatus.type}`} role={unavailableDateStatus.type === 'error' ? 'alert' : 'status'}>
+                          {unavailableDateStatus.message}
+                        </p>
+                      )}
                     </div>
                     {selectedDayBookings.length === 0 ? (
                       <p className="helper-text">No bookings for this date.</p>
@@ -1993,6 +2159,28 @@ function AdminDashboard({ onLogout }) {
                             <div><strong>Occasion:</strong> {booking.occasion || '--'}</div>
                             <div><strong>Event address:</strong> {booking.eventAddress || '--'}</div>
                             {booking.eventDetails && <div><strong>Event details:</strong> {booking.eventDetails}</div>}
+                            {booking.selectedPackage?.packageId && (
+                              <section className="booking-package-summary" aria-label="Selected menu package">
+                                <div className="booking-package-summary-heading">
+                                  <strong>Menu package: {booking.selectedPackage.name}</strong>
+                                  <span>
+                                    {booking.selectedPackage.currency} {Number(booking.selectedPackage.totalPrice || 0).toFixed(2)} total
+                                  </span>
+                                </div>
+                                <small>
+                                  {booking.selectedPackage.currency} {Number(booking.selectedPackage.pricePerGuest || 0).toFixed(2)} per guest
+                                  {' · '}{booking.selectedPackage.guestCount} guests
+                                </small>
+                                {booking.selectedPackage.description && <p>{booking.selectedPackage.description}</p>}
+                                <ul>
+                                  {(booking.selectedPackage.meals || []).map((meal, index) => (
+                                    <li key={`${meal.mealId || meal.title}-${index}`}>
+                                      {meal.title}{meal.category ? ` · ${meal.category}` : ''}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </section>
+                            )}
                             {booking.quote?.items?.length > 0 && (
                               <section className="booking-quote-summary" aria-label="Saved estimate">
                                 <div className="booking-quote-summary-heading">
@@ -2063,14 +2251,18 @@ function AdminDashboard({ onLogout }) {
                               >
                                 {booking.quote?.items?.length ? 'Edit estimate' : 'Create estimate'}
                               </button>
-                              {(booking.status || 'pending') !== 'approved' && (
+                              {((booking.status || 'pending') !== 'approved' || !booking.approvalEmailSentAt) && (
                                 <button
                                   type="button"
                                   className="btn-secondary"
                                   onClick={() => handleApproveBooking(booking._id)}
                                   disabled={approvingBookingId === booking._id}
                                 >
-                                  {approvingBookingId === booking._id ? 'Approving...' : 'Approve'}
+                                  {approvingBookingId === booking._id
+                                    ? 'Approving...'
+                                    : booking.status === 'approved'
+                                      ? 'Retry notification'
+                                      : 'Approve'}
                                 </button>
                               )}
                               <button

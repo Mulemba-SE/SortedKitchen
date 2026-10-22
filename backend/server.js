@@ -101,6 +101,22 @@ const bookingSchema = new mongoose.Schema({
   eventAddress: String,
   referralSource: String,
   eventDetails: String,
+  selectedPackage: {
+    packageId: String,
+    name: String,
+    description: String,
+    currency: String,
+    pricePerGuest: Number,
+    guestCount: Number,
+    totalPrice: Number,
+    meals: [{
+      mealId: String,
+      title: String,
+      category: String,
+      description: String,
+      imageUrl: String
+    }]
+  },
   quote: {
     currency: { type: String, uppercase: true, trim: true, default: 'KES' },
     items: [{
@@ -127,6 +143,17 @@ const bookingSchema = new mongoose.Schema({
 bookingSchema.index({ 'quote.responseTokenHash': 1 }, { sparse: true });
 
 const Booking = mongoose.model('Booking', bookingSchema);
+
+const unavailableDateSchema = new mongoose.Schema({
+  date: { type: String, required: true, unique: true, match: /^\d{4}-\d{2}-\d{2}$/ },
+  type: { type: String, enum: ['blocked', 'booked'], default: 'blocked' },
+  reason: { type: String, trim: true, maxlength: 120, default: '' },
+  blockedBy: { type: String, default: '' },
+  bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const UnavailableDate = mongoose.model('UnavailableDate', unavailableDateSchema);
 
 // Activity Schema
 const activitySchema = new mongoose.Schema({
@@ -179,6 +206,24 @@ mealSchema.pre('save', function updateTimestamp(next) {
 });
 
 const Meal = mongoose.model('Meal', mealSchema);
+
+const menuPackageSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true, maxlength: 100 },
+  description: { type: String, trim: true, maxlength: 1000, default: '' },
+  currency: { type: String, required: true, uppercase: true, trim: true, match: /^[A-Z]{3}$/ },
+  pricePerGuest: { type: Number, required: true, min: 0, max: 1000000000 },
+  mealIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Meal' }],
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+menuPackageSchema.pre('save', function updatePackageTimestamp(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const MenuPackage = mongoose.model('MenuPackage', menuPackageSchema);
 
 const reviewSchema = new mongoose.Schema({
   author: { type: String, required: true, trim: true, maxlength: 120 },
@@ -377,6 +422,10 @@ const sendBookingApprovalEmail = async (booking) => {
     '',
     `Great news: your booking request for ${booking.guests || 'your'} guests on ${formatBookingDateTime(booking)} has been approved.`,
     booking.occasion ? `Occasion: ${booking.occasion}` : '',
+    booking.selectedPackage?.packageId
+      ? `Menu package: ${booking.selectedPackage.name} (${booking.selectedPackage.currency} ${Number(booking.selectedPackage.totalPrice || 0).toFixed(2)} total)`
+      : '',
+    ...(booking.selectedPackage?.meals || []).map((meal) => `Included dish: ${meal.title}`),
     booking.eventAddress ? `Event address: ${booking.eventAddress}` : '',
     '',
     'We look forward to serving you.',
@@ -846,6 +895,18 @@ const toCustomerBooking = (booking) => {
     status: booking.status,
     createdAt: booking.createdAt,
     approvedAt: booking.approvedAt || null,
+    selectedPackage: booking.selectedPackage?.packageId
+      ? {
+        packageId: booking.selectedPackage.packageId,
+        name: booking.selectedPackage.name,
+        description: booking.selectedPackage.description,
+        currency: booking.selectedPackage.currency,
+        pricePerGuest: booking.selectedPackage.pricePerGuest,
+        guestCount: booking.selectedPackage.guestCount,
+        totalPrice: booking.selectedPackage.totalPrice,
+        meals: booking.selectedPackage.meals
+      }
+      : null,
     quote: quoteVisible
       ? {
         currency: quote.currency || 'KES',
@@ -857,10 +918,133 @@ const toCustomerBooking = (booking) => {
   };
 };
 
+const isCalendarDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+};
+
+const reserveApprovedBookingDate = async (booking) => {
+  const existingReservation = await UnavailableDate.findOne({ date: booking.date });
+  if (existingReservation) {
+    if (existingReservation.type === 'booked' && String(existingReservation.bookingId) === String(booking._id)) {
+      return { reservation: existingReservation, created: false };
+    }
+    return {
+      error: existingReservation.type === 'blocked'
+        ? 'This date is marked unavailable. Remove the date block before approving this booking.'
+        : 'Another booking already reserves this date.'
+    };
+  }
+
+  if (await Booking.exists({ date: booking.date, status: 'approved', _id: { $ne: booking._id } })) {
+    return { error: 'Another booking already reserves this date.' };
+  }
+
+  try {
+    const reservation = await UnavailableDate.create({
+      date: booking.date,
+      type: 'booked',
+      bookingId: booking._id
+    });
+    return { reservation, created: true };
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    const conflictingReservation = await UnavailableDate.findOne({ date: booking.date });
+    if (conflictingReservation?.type === 'booked'
+      && String(conflictingReservation.bookingId) === String(booking._id)) {
+      return { reservation: conflictingReservation, created: false };
+    }
+    return {
+      error: conflictingReservation?.type === 'blocked'
+        ? 'This date is marked unavailable. Remove the date block before approving this booking.'
+        : 'Another booking already reserves this date.'
+    };
+  }
+};
+
+const releaseApprovedBookingDate = async (bookingId, date) => (
+  UnavailableDate.deleteOne({ date, type: 'booked', bookingId })
+);
+
+app.get('/api/availability', async (req, res) => {
+  try {
+    const [unavailableDates, bookedReservations, approvedBookings] = await Promise.all([
+      UnavailableDate.find({ type: 'blocked' }, { date: 1, _id: 0 }).lean(),
+      UnavailableDate.find({ type: 'booked' }, { date: 1, _id: 0 }).lean(),
+      Booking.find({ status: 'approved' }, { date: 1, _id: 0 }).lean()
+    ]);
+    return res.json({
+      unavailableDates: unavailableDates.map(({ date }) => date),
+      bookedDates: [...new Set([
+        ...bookedReservations.map(({ date }) => date),
+        ...approvedBookings.map(({ date }) => date).filter(isCalendarDate)
+      ])]
+    });
+  } catch (err) {
+    console.error('Fetch availability error:', err);
+    return res.status(500).json({ error: 'Could not fetch booking availability' });
+  }
+});
+
 app.post('/api/book', requireAuth, async (req, res) => {
   try {
+    const date = req.body?.date;
+    if (!isCalendarDate(date)) {
+      return res.status(400).json({ error: 'Choose a valid booking date' });
+    }
+    const dateReservation = await UnavailableDate.findOne({ date });
+    if (dateReservation) {
+      return res.status(409).json({
+        error: dateReservation.type === 'blocked'
+          ? 'This date is unavailable. Please choose another date.'
+          : 'This date is already booked. Please choose another date.'
+      });
+    }
+    if (await Booking.exists({ date, status: 'approved' })) {
+      return res.status(409).json({ error: 'This date is already booked. Please choose another date.' });
+    }
+
+    let selectedPackage;
+    if (req.body?.packageId) {
+      if (!mongoose.isValidObjectId(req.body.packageId)) {
+        return res.status(400).json({ error: 'Choose a valid menu package' });
+      }
+      const menuPackage = await MenuPackage.findOne({ _id: req.body.packageId, isActive: true }).populate({
+        path: 'mealIds',
+        select: 'title category description imageUrl'
+      });
+      if (!menuPackage) {
+        return res.status(400).json({ error: 'The selected menu package is no longer available. Please choose another package.' });
+      }
+      const guestCount = Number(req.body?.guests);
+      if (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 10000) {
+        return res.status(400).json({ error: 'Enter a valid guest count to calculate package pricing' });
+      }
+      selectedPackage = {
+        packageId: menuPackage._id.toString(),
+        name: menuPackage.name,
+        description: menuPackage.description,
+        currency: menuPackage.currency,
+        pricePerGuest: menuPackage.pricePerGuest,
+        guestCount,
+        totalPrice: Math.round(menuPackage.pricePerGuest * guestCount * 100) / 100,
+        meals: menuPackage.mealIds.map((meal) => ({
+          mealId: meal._id.toString(),
+          title: meal.title || '',
+          category: meal.category || '',
+          description: meal.description || '',
+          imageUrl: meal.imageUrl || ''
+        }))
+      };
+    }
+
     const newBooking = new Booking({
       ...pickBookingRequest(req.body),
+      selectedPackage,
       userId: req.user?.userId,
       status: 'pending',
       approvedAt: undefined,
@@ -868,13 +1052,15 @@ app.post('/api/book', requireAuth, async (req, res) => {
       approvedBy: ''
     });
     await newBooking.save();
-    console.log('Received booking:', req.body);
 
     // Log Activity
     await new Activity({ actor: req.user?.email || '', action: 'New Booking', details: `${req.body.name} requested a booking for ${req.body.guests} guests` }).save();
 
     res.status(200).json({ message: 'Booking request received successfully!', booking: newBooking });
   } catch (err) {
+    if (err?.code === 11000 && err?.keyPattern?.date) {
+      return res.status(409).json({ error: 'This date is already booked. Please choose another date.' });
+    }
     console.error('Booking create error:', err);
     res.status(500).json({ error: 'Failed to save booking' });
   }
@@ -903,9 +1089,76 @@ app.get('/api/bookings', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/unavailable-dates', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const dates = await UnavailableDate.find({ type: 'blocked' }).sort({ date: 1 }).lean();
+    return res.json(dates);
+  } catch (err) {
+    console.error('Fetch unavailable dates error:', err);
+    return res.status(500).json({ error: 'Could not fetch unavailable dates' });
+  }
+});
+
+app.post('/api/admin/unavailable-dates', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const date = req.body?.date;
+    const reason = String(req.body?.reason || '').trim();
+    if (!isCalendarDate(date)) {
+      return res.status(400).json({ error: 'Choose a valid unavailable date' });
+    }
+    if (reason.length > 120) {
+      return res.status(400).json({ error: 'The reason must be 120 characters or fewer' });
+    }
+    if (await Booking.exists({ date, status: 'approved' })) {
+      return res.status(409).json({ error: 'An approved booking already reserves this date' });
+    }
+    if (await UnavailableDate.exists({ date })) {
+      return res.status(409).json({ error: 'This date already has an availability entry' });
+    }
+
+    const unavailableDate = await UnavailableDate.create({
+      date,
+      type: 'blocked',
+      reason,
+      blockedBy: req.user?.email || ''
+    });
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Date Blocked',
+      details: `${date} marked unavailable${reason ? `: ${reason}` : ''}`
+    }).save();
+    return res.status(201).json({ unavailableDate });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ error: 'This date is already marked unavailable' });
+    }
+    console.error('Block date error:', err);
+    return res.status(500).json({ error: 'Could not mark this date unavailable' });
+  }
+});
+
+app.delete('/api/admin/unavailable-dates/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const unavailableDate = await UnavailableDate.findOneAndDelete({ _id: req.params.id, type: 'blocked' });
+    if (!unavailableDate) return res.status(404).json({ error: 'Unavailable date not found' });
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Date Unblocked',
+      details: `${unavailableDate.date} is available for booking again`
+    }).save();
+    return res.json({ message: 'Date is available for booking again', unavailableDate });
+  } catch (err) {
+    console.error('Unblock date error:', err);
+    return res.status(500).json({ error: 'Could not unblock this date' });
+  }
+});
+
 app.delete('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await Booking.findByIdAndDelete(req.params.id);
+    const booking = await Booking.findByIdAndDelete(req.params.id);
+    if (booking?.status === 'approved') {
+      await releaseApprovedBookingDate(booking._id, booking.date);
+    }
     await new Activity({ actor: req.user?.email || '', action: 'Booking Deleted', details: `Booking ID ${req.params.id} was removed` }).save();
     res.status(200).json({ message: 'Booking deleted successfully' });
   } catch (err) {
@@ -921,6 +1174,11 @@ app.post('/api/bookings/:id/approve', requireAuth, requireAdmin, async (req, res
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    const dateReservationResult = await reserveApprovedBookingDate(booking);
+    if (dateReservationResult.error) {
+      return res.status(409).json({ error: dateReservationResult.error });
+    }
+
     if (booking.status === 'approved' && booking.approvalEmailSentAt) {
       return res.json({
         message: 'Booking was already approved and the client has already been notified.',
@@ -931,8 +1189,22 @@ app.post('/api/bookings/:id/approve', requireAuth, requireAdmin, async (req, res
     booking.status = 'approved';
     booking.approvedAt = booking.approvedAt || new Date();
     booking.approvedBy = req.user?.email || '';
+    try {
+      await booking.save();
+    } catch (saveError) {
+      if (dateReservationResult.created) await releaseApprovedBookingDate(booking._id, booking.date);
+      throw saveError;
+    }
 
-    await sendBookingApprovalEmail(booking);
+    try {
+      await sendBookingApprovalEmail(booking);
+    } catch (emailError) {
+      console.error('Booking approval email error:', emailError);
+      return res.status(502).json({
+        error: 'Booking reserved, but the notification email could not be sent. Retry the notification from the admin dashboard.',
+        booking
+      });
+    }
     booking.approvalEmailSentAt = new Date();
     await booking.save();
 
@@ -955,8 +1227,45 @@ app.put('/api/bookings/:id', requireAuth, requireAdmin, async (req, res) => {
     const updates = Object.fromEntries(editableFields
       .filter((field) => Object.hasOwn(req.body || {}, field))
       .map((field) => [field, req.body[field]]));
-    const updatedBooking = await Booking.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
-    if (!updatedBooking) return res.status(404).json({ error: 'Booking not found' });
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (Object.hasOwn(updates, 'date') && !isCalendarDate(updates.date)) {
+      return res.status(400).json({ error: 'Choose a valid booking date' });
+    }
+    const previousDate = booking.date;
+    const nextDate = updates.date || booking.date;
+    const reservationAtNextDate = await UnavailableDate.findOne({ date: nextDate });
+    if (reservationAtNextDate?.type === 'blocked') {
+      return res.status(409).json({ error: 'This date is marked unavailable. Remove the date block before moving this booking.' });
+    }
+    if (reservationAtNextDate?.type === 'booked'
+      && String(reservationAtNextDate.bookingId) !== String(booking._id)) {
+      return res.status(409).json({ error: 'Another booking already reserves this date.' });
+    }
+    if (await Booking.exists({ date: nextDate, status: 'approved', _id: { $ne: booking._id } })) {
+      return res.status(409).json({ error: 'Another booking already reserves this date.' });
+    }
+
+    Object.assign(booking, updates);
+    let newDateReservation;
+    if (booking.status === 'approved' && !reservationAtNextDate) {
+      const reservationResult = await reserveApprovedBookingDate(booking);
+      if (reservationResult.error) {
+        return res.status(409).json({ error: reservationResult.error });
+      }
+      newDateReservation = reservationResult;
+    }
+
+    let updatedBooking;
+    try {
+      updatedBooking = await booking.save();
+    } catch (saveError) {
+      if (newDateReservation?.created) await releaseApprovedBookingDate(booking._id, nextDate);
+      throw saveError;
+    }
+    if (booking.status === 'approved' && previousDate !== nextDate) {
+      await releaseApprovedBookingDate(booking._id, previousDate);
+    }
     await new Activity({ actor: req.user?.email || '', action: 'Booking Updated', details: `Booking for ${updatedBooking.name} was updated` }).save();
     res.json(updatedBooking);
   } catch (err) {
@@ -1161,6 +1470,75 @@ app.get('/api/activity', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const requestedMonths = Number.parseInt(req.query.months, 10);
+    const monthCount = [6, 12, 24].includes(requestedMonths) ? requestedMonths : 12;
+    const now = new Date();
+    const firstMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthCount + 1, 1));
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const formatMonth = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    const months = [];
+    const monthIndex = new Map();
+
+    for (let offset = 0; offset < monthCount; offset += 1) {
+      const date = new Date(Date.UTC(firstMonth.getUTCFullYear(), firstMonth.getUTCMonth() + offset, 1));
+      const key = formatMonth(date);
+      monthIndex.set(key, months.length);
+      months.push({ month: key, bookingCount: 0, approvedCount: 0, revenueByCurrency: {} });
+    }
+
+    const bookings = await Booking.find({
+      date: {
+        $gte: `${formatMonth(firstMonth)}-01`,
+        $lt: `${formatMonth(nextMonth)}-01`
+      }
+    }, {
+      date: 1,
+      status: 1,
+      selectedPackage: 1
+    }).lean();
+
+    const currencies = new Set();
+    for (const booking of bookings) {
+      if (!isCalendarDate(booking.date)) continue;
+      const periodIndex = monthIndex.get(booking.date.slice(0, 7));
+      if (periodIndex === undefined) continue;
+      const period = months[periodIndex];
+      period.bookingCount += 1;
+      if (booking.status !== 'approved') continue;
+      period.approvedCount += 1;
+
+      const selectedPackage = booking.selectedPackage;
+      const amount = Number(selectedPackage?.totalPrice);
+      if (!selectedPackage?.packageId || !Number.isFinite(amount) || amount < 0) continue;
+      const currency = /^[A-Z]{3}$/.test(String(selectedPackage.currency || ''))
+        ? selectedPackage.currency
+        : 'KES';
+      currencies.add(currency);
+      period.revenueByCurrency[currency] = Math.round(
+        ((period.revenueByCurrency[currency] || 0) + amount) * 100
+      ) / 100;
+    }
+
+    return res.json({
+      months: months.map((period) => ({
+        ...period,
+        revenueByCurrency: Object.fromEntries(
+          [...currencies].sort().map((currency) => [currency, period.revenueByCurrency[currency] || 0])
+        )
+      })),
+      currencies: [...currencies].sort(),
+      monthCount,
+      monthBasis: 'event_date',
+      revenueBasis: 'approved_packages'
+    });
+  } catch (err) {
+    console.error('Fetch admin analytics error:', err);
+    return res.status(500).json({ error: 'Could not load booking analytics' });
+  }
+});
+
 app.get('/api/reviews', async (req, res) => {
   try {
     const reviews = await Review.find({ published: true }).sort({ createdAt: -1 });
@@ -1252,6 +1630,141 @@ app.get('/api/meals', async (req, res) => {
   }
 });
 
+const normalizeMenuPackage = async (body = {}) => {
+  const name = String(body.name || '').trim();
+  const description = String(body.description || '').trim();
+  const currency = String(body.currency || '').trim().toUpperCase();
+  const pricePerGuest = Number(body.pricePerGuest);
+  const mealIds = Array.isArray(body.mealIds) ? [...new Set(body.mealIds.map(String))] : [];
+
+  if (!name || name.length > 100) {
+    return { error: 'Package name is required and must be 100 characters or fewer' };
+  }
+  if (description.length > 1000) {
+    return { error: 'Package description must be 1000 characters or fewer' };
+  }
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    return { error: 'Choose a valid 3-letter currency' };
+  }
+  if (!Number.isFinite(pricePerGuest) || pricePerGuest < 0 || pricePerGuest > 1000000000) {
+    return { error: 'Enter a valid non-negative price per guest' };
+  }
+  if (mealIds.length < 1 || mealIds.length > 30 || mealIds.some((id) => !mongoose.isValidObjectId(id))) {
+    return { error: 'Choose between 1 and 30 valid meals for this package' };
+  }
+
+  const mealCount = await Meal.countDocuments({ _id: { $in: mealIds } });
+  if (mealCount !== mealIds.length) {
+    return { error: 'One or more selected meals no longer exist' };
+  }
+  return {
+    packageData: {
+      name,
+      description,
+      currency,
+      pricePerGuest,
+      mealIds,
+      ...(typeof body.isActive === 'boolean' ? { isActive: body.isActive } : {})
+    }
+  };
+};
+
+app.get('/api/menu-packages', async (req, res) => {
+  try {
+    const packages = await MenuPackage.find({ isActive: true })
+      .populate({ path: 'mealIds', select: 'title category description imageUrl' })
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.json(packages);
+  } catch (err) {
+    console.error('Fetch menu packages error:', err);
+    return res.status(500).json({ error: 'Failed to fetch menu packages' });
+  }
+});
+
+app.get('/api/admin/menu-packages', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const packages = await MenuPackage.find()
+      .populate({ path: 'mealIds', select: 'title category description imageUrl' })
+      .sort({ updatedAt: -1 })
+      .lean();
+    return res.json(packages);
+  } catch (err) {
+    console.error('Fetch admin menu packages error:', err);
+    return res.status(500).json({ error: 'Failed to fetch menu packages' });
+  }
+});
+
+app.post('/api/admin/menu-packages', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { packageData, error } = await normalizeMenuPackage(req.body);
+    if (error) return res.status(400).json({ error });
+    const menuPackage = await MenuPackage.create(packageData);
+    const savedPackage = await MenuPackage.findById(menuPackage._id)
+      .populate({ path: 'mealIds', select: 'title category description imageUrl' })
+      .lean();
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Menu Package Created',
+      details: `${savedPackage.name} created at ${savedPackage.currency} ${Number(savedPackage.pricePerGuest).toFixed(2)} per guest`
+    }).save();
+    return res.status(201).json(savedPackage);
+  } catch (err) {
+    console.error('Create menu package error:', err);
+    return res.status(500).json({ error: 'Failed to create menu package' });
+  }
+});
+
+app.put('/api/admin/menu-packages/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid menu package ID' });
+    }
+    const existingPackage = await MenuPackage.findById(req.params.id);
+    if (!existingPackage) return res.status(404).json({ error: 'Menu package not found' });
+
+    const { packageData, error } = await normalizeMenuPackage(req.body);
+    if (error) return res.status(400).json({ error });
+    Object.assign(existingPackage, packageData);
+    await existingPackage.save();
+    const savedPackage = await MenuPackage.findById(existingPackage._id)
+      .populate({ path: 'mealIds', select: 'title category description imageUrl' })
+      .lean();
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Menu Package Updated',
+      details: `${savedPackage.name} updated`
+    }).save();
+    return res.json(savedPackage);
+  } catch (err) {
+    console.error('Update menu package error:', err);
+    return res.status(500).json({ error: 'Failed to update menu package' });
+  }
+});
+
+app.delete('/api/admin/menu-packages/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid menu package ID' });
+    }
+    const menuPackage = await MenuPackage.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isActive: false, updatedAt: new Date() } },
+      { new: true }
+    );
+    if (!menuPackage) return res.status(404).json({ error: 'Menu package not found' });
+    await new Activity({
+      actor: req.user?.email || '',
+      action: 'Menu Package Archived',
+      details: `${menuPackage.name} is no longer available for new bookings`
+    }).save();
+    return res.json({ message: 'Menu package archived' });
+  } catch (err) {
+    console.error('Archive menu package error:', err);
+    return res.status(500).json({ error: 'Failed to archive menu package' });
+  }
+});
+
 app.post('/api/meals', requireAuth, requireAdmin, async (req, res) => {
   try {
     const mealPayload = normalizeMealPayload(req.body);
@@ -1296,6 +1809,10 @@ app.put('/api/meals/:id', requireAuth, requireAdmin, async (req, res) => {
 
 app.delete('/api/meals/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
+    const usedByPackage = await MenuPackage.exists({ mealIds: req.params.id });
+    if (usedByPackage) {
+      return res.status(409).json({ error: 'This meal is included in a menu package. Remove it from the package before deleting the meal.' });
+    }
     await Meal.findByIdAndDelete(req.params.id);
     res.json({ message: 'Meal deleted' });
   } catch (err) {

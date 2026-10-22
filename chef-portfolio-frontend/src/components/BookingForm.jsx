@@ -20,6 +20,48 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null); // { type: 'success' | 'error', message: '' }
   const [errors, setErrors] = useState({});
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [menuPackages, setMenuPackages] = useState([]);
+  const [selectedPackageId, setSelectedPackageId] = useState('');
+  const [packageLoadError, setPackageLoadError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/availability`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Could not load available dates');
+        setUnavailableDates([...new Set([
+          ...(data.unavailableDates || []),
+          ...(data.bookedDates || [])
+        ])]);
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('Availability fetch error:', error);
+          setAvailabilityError('Availability could not be loaded. The server will still verify your selected date when you submit.');
+        }
+      });
+    return () => controller.abort();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${apiUrl}/api/menu-packages`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(data.error || 'Could not load menu packages');
+        setMenuPackages(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('Menu package fetch error:', error);
+          setPackageLoadError('Packages are temporarily unavailable. You can still submit a booking without a package.');
+        }
+      });
+    return () => controller.abort();
+  }, [apiUrl]);
 
   useEffect(() => {
     if (defaultOccasion) {
@@ -42,6 +84,10 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
     }));
   };
 
+  const formatLocalDate = (date) => (
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  );
+
   const validateForm = () => {
     const newErrors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -55,10 +101,18 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
       setErrors(newErrors);
       return false;
     }
-    const selectedDate = new Date(formData.date);
-    const now = new Date();
-    if (selectedDate < now) {
-      newErrors.date = "Please select a future date and time.";
+    const selectedDateKey = formatLocalDate(formData.date);
+    if (unavailableDates.includes(selectedDateKey)) {
+      newErrors.date = 'This date is unavailable. Please select another date.';
+    } else {
+      const [hours, minutes] = String(formData.time || '').split(':').map(Number);
+      const selectedDateTime = new Date(formData.date);
+      if (Number.isInteger(hours) && Number.isInteger(minutes)) {
+        selectedDateTime.setHours(hours, minutes, 0, 0);
+      }
+      if (selectedDateTime < new Date()) {
+        newErrors.date = "Please select a future date and time.";
+      }
     }
 
     setErrors(newErrors);
@@ -81,7 +135,8 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
     // Format date to string for backend consistency (YYYY-MM-DD)
     const submissionData = {
       ...formData,
-      date: formData.date.toISOString().split('T')[0]
+      date: formatLocalDate(formData.date),
+      packageId: selectedPackageId || undefined
     };
 
     try {
@@ -108,10 +163,12 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
           referralSource: '',
           eventDetails: ''
         });
+        setSelectedPackageId('');
       } else if (response.status === 401) {
         setSubmitStatus({ type: 'error', message: 'Your session has expired. Please log in again.' });
       } else {
-        setSubmitStatus({ type: 'error', message: 'Something went wrong. Please try again.' });
+        const data = await response.json().catch(() => ({}));
+        setSubmitStatus({ type: 'error', message: data.error || 'Something went wrong. Please try again.' });
       }
     } catch (error) {
       console.error('Error:', error);
@@ -149,9 +206,18 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
               dateFormat="yyyy-MM-dd"
               placeholderText="Select a date"
               className="datepicker-input"
+              minDate={new Date()}
+              excludeDates={unavailableDates.map((date) => {
+                const [year, month, day] = date.split('-').map(Number);
+                return new Date(year, month - 1, day);
+              })}
+              filterDate={(date) => !unavailableDates.includes(formatLocalDate(date))}
+              ariaLabelledBy="date"
             />
           </div>
           {errors.date && <span className="error-text">{errors.date}</span>}
+          {availabilityError && <span className="helper-text">{availabilityError}</span>}
+          {unavailableDates.length > 0 && <span className="helper-text">Dates that are booked or unavailable cannot be selected.</span>}
         </div>
         <div className="form-group">
           <label htmlFor="time">Time</label>
@@ -161,6 +227,44 @@ function BookingForm({ embedded = false, defaultOccasion = '' }) {
           <label htmlFor="guests">Number of Guests</label>
           <input type="number" id="guests" name="guests" min="1" max="20" value={formData.guests} onChange={handleChange} required />
         </div>
+        {menuPackages.length > 0 && (
+          <div className="form-group full-width booking-package-picker">
+            <label htmlFor="booking-package">Menu package (optional)</label>
+            <select
+              id="booking-package"
+              value={selectedPackageId}
+              onChange={(event) => setSelectedPackageId(event.target.value)}
+            >
+              <option value="">Choose later / no package</option>
+              {menuPackages.map((menuPackage) => (
+                <option value={menuPackage._id} key={menuPackage._id}>
+                  {menuPackage.name} · {menuPackage.currency} {Number(menuPackage.pricePerGuest || 0).toFixed(2)} per guest
+                </option>
+              ))}
+            </select>
+            {selectedPackageId && (() => {
+              const selectedPackage = menuPackages.find((item) => item._id === selectedPackageId);
+              if (!selectedPackage) return null;
+              return (
+                <div className="booking-package-summary">
+                  {selectedPackage.description && <p>{selectedPackage.description}</p>}
+                  <strong>
+                    Estimated package total: {selectedPackage.currency} {(Number(selectedPackage.pricePerGuest || 0) * Number(formData.guests || 0)).toFixed(2)}
+                  </strong>
+                  <span>{selectedPackage.currency} {Number(selectedPackage.pricePerGuest || 0).toFixed(2)} per guest</span>
+                  {selectedPackage.mealIds?.filter(Boolean).length > 0 && (
+                    <ul>
+                      {selectedPackage.mealIds.filter(Boolean).map((meal) => (
+                        <li key={meal._id}>{meal.title}{meal.category ? ` · ${meal.category}` : ''}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        {packageLoadError && <p className="helper-text full-width">{packageLoadError}</p>}
         <div className="form-group">
           <label htmlFor="occasion">Occasion (Optional)</label>
           <select id="occasion" name="occasion" value={formData.occasion} onChange={handleChange}>
